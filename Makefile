@@ -24,6 +24,10 @@ test:
 	@echo "Running tests..."
 	@go test -v ./...
 
+fmt:
+	@echo "Formatting code..."
+	@go fmt ./...
+
 lint:
 	@echo "Running golangci-lint..."
 	@golangci-lint run --config=.golangci.yml
