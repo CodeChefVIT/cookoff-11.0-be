@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CodeChefVIT/go-backend-template/internal/dto"
-	"github.com/CodeChefVIT/go-backend-template/internal/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"github.com/labstack/echo/v4"
 )
 
