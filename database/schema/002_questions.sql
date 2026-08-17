@@ -3,7 +3,7 @@ CREATE TABLE questions (
 	id UUID NOT NULL,
 	description TEXT NOT NULL,
 	title TEXT NOT NULL,
-    qType TEXT NOT NULL,
+    q_type TEXT NOT NULL,
 	input_format TEXT[],
 	buy_in NUMERIC, 
 	reward NUMERIC,
