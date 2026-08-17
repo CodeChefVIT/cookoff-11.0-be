@@ -45,12 +45,19 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_SSLMODE=disable
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - FRONTEND_URL=${FRONTEND_URL:?FRONTEND_URL is required}
       - ADMIN_URL=${ADMIN_URL:?ADMIN_URL is required}
+      - ELASTIC_HOST=${ELASTIC_HOST:-localhost}
+      - ELASTIC_PORT=${ELASTIC_PORT:-9200}
+      - ELASTIC_SCHEME=${ELASTIC_SCHEME:-http}
+      - ELASTIC_USERNAME=${ELASTIC_USERNAME:-elastic}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-changeme}
+      - ELASTIC_INDEX=${ELASTIC_INDEX:-logs}
+      - ELASTIC_MAX_RETRIES=${ELASTIC_MAX_RETRIES:-3}
+      - ELASTIC_INSECURE=${ELASTIC_INSECURE:-false}
     depends_on:
       postgres:
         condition: service_healthy

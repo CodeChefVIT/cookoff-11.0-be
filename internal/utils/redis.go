@@ -19,8 +19,6 @@ func InitRedis() {
 		Addr:         addr,
 		Password:     Config.RedisPassword,
 		DB:           0,
-		PoolSize:     Config.RedisPoolSize,
-		MinIdleConns: Config.RedisMinIdleConns,
 		DialTimeout:  5 * time.Second,
 		ReadTimeout:  3 * time.Second,
 		WriteTimeout: 3 * time.Second,

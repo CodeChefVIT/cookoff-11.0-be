@@ -21,16 +21,17 @@ func main() {
 	command := os.Args[1]
 
 	// Load environment configuration
-	utils.LoadConfig()
+	if err := utils.LoadConfig(); err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
 
 	// Parse database DSN from config
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		utils.Config.PostgresUser,
 		utils.Config.PostgresPassword,
 		utils.Config.PostgresHost,
 		utils.Config.PostgresPort,
 		utils.Config.PostgresDB,
-		utils.Config.PostgresSSLMode,
 	)
 
 	// Open connection using pgx stdlib compatibility layer
