@@ -10,7 +10,7 @@ CREATE TABLE attempts (
 	PRIMARY KEY(id),
     CONSTRAINT uq_attempts_user_question UNIQUE(user_id, question_id),
     CONSTRAINT chk_attempts_status CHECK (status IN ('available', 'bought', 'answered'))
-)
+);
  
 -- +goose Down
 DROP TABLE attempts;

@@ -23,5 +23,7 @@ ALTER TABLE submissions DROP CONSTRAINT fk_submissions_user;
 ALTER TABLE submission_results DROP CONSTRAINT fk_submission_results;
 ALTER TABLE visual_solutions DROP CONSTRAINT fk_visualsolutions;
 ALTER TABLE visual_blocks DROP CONSTRAINT fk_visualblocks;
+ALTER TABLE attempts DROP CONSTRAINT fk_attempts_user;
+ALTER TABLE attempts DROP CONSTRAINT fk_attempts_question;
 
 
