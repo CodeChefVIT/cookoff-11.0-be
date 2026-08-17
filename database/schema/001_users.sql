@@ -1,6 +1,6 @@
 -- +goose Up
 CREATE TABLE users (
-	id UUID NOT NULL UNIQUE,
+	id UUID NOT NULL,
 	email TEXT NOT NULL UNIQUE, 
 	reg_no TEXT NOT NULL UNIQUE,
 	password TEXT NOT NULL,
