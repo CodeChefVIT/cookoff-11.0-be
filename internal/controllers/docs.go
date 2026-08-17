@@ -18,11 +18,11 @@ func ServeDocs(c echo.Context) error {
 		DarkMode: true,
 	})
 	if err != nil {
-    return c.JSON(500, map[string]string{
-        "status":  "error",
-        "message": err.Error(),
-    })
-}
+		return c.JSON(500, map[string]string{
+			"status":  "error",
+			"message": err.Error(),
+		})
+	}
 
 	return c.HTML(http.StatusOK, content)
 }
