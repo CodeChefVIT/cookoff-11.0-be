@@ -1,21 +1,6 @@
-# Go Backend Template Documentation Mirror
+# Documentation
 
-This directory mirrors the source structure of the project to explain the purpose, interface design, and usage instructions of each module.
-
-## Directory Mapping
-
-```
-├── cmd/               --> [docs/cmd/]              Application Entrypoint
-├── internal/
-│   ├── controllers/   --> [docs/internal/controllers/]  HTTP Controllers
-│   ├── db/            --> [docs/internal/db/]           SQLC & Migration Schemas
-│   ├── dto/           --> [docs/internal/dto/]          Data Transfer Objects & Validation
-│   ├── middlewares/   --> [docs/internal/middlewares/]  Echo Middlewares
-│   ├── router/        --> [docs/internal/router/]       Route Definitions
-│   ├── services/      --> [docs/internal/services/]     Business Logic Layer
-│   └── utils/         --> [docs/internal/utils/]        Helpers & Setup Utils
-└── tests/             --> [docs/tests/]            Testing Strategies & Mocks
-```
+This directory contains system architecture specifications, OpenAPI schemas, HLD/LLD documents, and API documentation for the project.
 
 ## Running the Server
 

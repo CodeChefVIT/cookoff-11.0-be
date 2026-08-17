@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/CodeChefVIT/go-backend-template/internal/logging"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -19,8 +19,6 @@ func InitRedis() {
 		Addr:         addr,
 		Password:     Config.RedisPassword,
 		DB:           0,
-		PoolSize:     Config.RedisPoolSize,
-		MinIdleConns: Config.RedisMinIdleConns,
 		DialTimeout:  5 * time.Second,
 		ReadTimeout:  3 * time.Second,
 		WriteTimeout: 3 * time.Second,

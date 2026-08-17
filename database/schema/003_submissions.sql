@@ -1,16 +1,16 @@
 -- +goose Up
 CREATE TABLE submissions (
-	id UUID NOT NULL UNIQUE,
+	id UUID NOT NULL,
 	question_id UUID NOT NULL,
 	testcases_passed INTEGER DEFAULT 0,
 	testcases_failed INTEGER DEFAULT 0,
 	runtime DECIMAL,
-	submission_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	submission_time TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 	source_code TEXT NOT NULL,
 	language_id INTEGER NOT NULL,
 	description TEXT,
 	memory NUMERIC,
-	user_id UUID,
+	user_id UUID NOT NULL,
 	status TEXT,
 	PRIMARY KEY(id)
 );

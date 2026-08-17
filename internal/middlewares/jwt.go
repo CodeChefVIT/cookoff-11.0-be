@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/CodeChefVIT/go-backend-template/internal/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 )

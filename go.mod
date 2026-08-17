@@ -1,4 +1,4 @@
-module github.com/CodeChefVIT/go-backend-template
+module github.com/CodeChefVIT/cookoff-11.0-be
 
 go 1.25.7
 

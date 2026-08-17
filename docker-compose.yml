@@ -1,8 +1,12 @@
+name: cookoff-11
+
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: cc_postgres
+    container_name: cookoff_11_postgres
     restart: always
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
@@ -17,8 +21,10 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: cc_redis
+    container_name: cookoff_11_redis
     restart: always
+    ports:
+      - "6379:6379"
     command: redis-server ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}
     volumes:
       - redis_data:/data
@@ -32,7 +38,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: cc_api
+    container_name: cookoff_11_api
     restart: always
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
@@ -45,12 +51,19 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_SSLMODE=disable
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - FRONTEND_URL=${FRONTEND_URL:?FRONTEND_URL is required}
       - ADMIN_URL=${ADMIN_URL:?ADMIN_URL is required}
+      - ELASTIC_HOST=${ELASTIC_HOST:-localhost}
+      - ELASTIC_PORT=${ELASTIC_PORT:-9200}
+      - ELASTIC_SCHEME=${ELASTIC_SCHEME:-http}
+      - ELASTIC_USERNAME=${ELASTIC_USERNAME:-elastic}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-changeme}
+      - ELASTIC_INDEX=${ELASTIC_INDEX:-logs}
+      - ELASTIC_MAX_RETRIES=${ELASTIC_MAX_RETRIES:-3}
+      - ELASTIC_INSECURE=${ELASTIC_INSECURE:-false}
     depends_on:
       postgres:
         condition: service_healthy

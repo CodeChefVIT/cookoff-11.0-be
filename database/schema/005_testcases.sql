@@ -1,6 +1,6 @@
 -- +goose Up
 CREATE TABLE testcases (
-	id UUID NOT NULL UNIQUE,
+	id UUID NOT NULL,
 	expected_output TEXT NOT NULL ,
 	memory NUMERIC NOT NULL ,
 	input TEXT NOT NULL ,
