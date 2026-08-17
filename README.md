@@ -1,6 +1,6 @@
-# Go Backend Template
+# Cookoff 11.0 Backend
 
-A production-level, highly scalable Go backend template built using the **Echo v4** HTTP framework. It utilizes connection pooled **PostgreSQL** via `pgx/v5` and compiled type-safe database queries via **SQLC**, backed by **Redis** and structured logging via **Zap**.
+A production-level, highly scalable Go backend built using the **Echo v4** HTTP framework. It utilizes connection pooled **PostgreSQL** via `pgx/v5` and compiled type-safe database queries via **SQLC**, backed by **Redis** and structured logging via **Zap**.
 
 ## Tech Stack
 

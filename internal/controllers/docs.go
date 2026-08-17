@@ -11,7 +11,7 @@ func ServeDocs(c echo.Context) error {
 	content, err := scalar.ApiReferenceHTML(&scalar.Options{
 		SpecURL: "./docs/docs.yaml",
 		CustomOptions: scalar.CustomOptions{
-			PageTitle: "DevSOC Backend API Docs",
+			PageTitle: "Cookoff 11.0 Backend API Docs",
 		},
 		DarkMode: true,
 	})
