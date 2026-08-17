@@ -4,6 +4,7 @@ CREATE TABLE visual_solutions (
     question_id UUID NOT NULL,
     solution  UUID[] NOT NULL,
     points NUMERIC NOT NULL,
+    PRIMARY KEY(id)
 );
 -- +goose Down
 DROP TABLE visual_solutions;
