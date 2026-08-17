@@ -52,7 +52,7 @@ func LoadConfig() error {
 	}
 
 	if err := env.Parse(&Config); err != nil {
-		return fmt.Errorf("Failed while trying to parse env: %+v", err)
+		return fmt.Errorf("failed while trying to parse env: %+v", err)
 	}
 	fmt.Println(Config.PostgresHost)
 
