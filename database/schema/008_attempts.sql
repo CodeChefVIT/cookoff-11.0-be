@@ -13,4 +13,4 @@ CREATE TABLE attempts (
 )
  
 -- +goose Down
-DROP TABLE question_attempts;
+DROP TABLE attempts;
