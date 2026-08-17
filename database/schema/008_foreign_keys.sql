@@ -17,5 +17,5 @@ ALTER TABLE testcases DROP CONSTRAINT fk_testcases;
 ALTER TABLE submissions DROP CONSTRAINT fk_submissions_user;
 ALTER TABLE submission_results DROP CONSTRAINT fk_submission_results;
 ALTER TABLE visual_solutions DROP CONSTRAINT fk_visualsolutions;
-ALTER TABLE visual_blocks DROP CONSTRAINT fk_blocks;
+ALTER TABLE visual_blocks DROP CONSTRAINT fk_visualblocks;
 
