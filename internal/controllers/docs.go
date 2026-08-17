@@ -1,8 +1,6 @@
 package controllers
 
 import (
-	// "fmt"
-	// "log"
 	"net/http"
 
 	"github.com/MarceloPetrucio/go-scalar-api-reference"
@@ -13,12 +11,12 @@ func ServeDocs(c echo.Context) error {
 	content, err := scalar.ApiReferenceHTML(&scalar.Options{
 		SpecURL: "./docs/docs.yaml",
 		CustomOptions: scalar.CustomOptions{
-			PageTitle: "Go Backend Template API Docs",
+			PageTitle: "DevSOC Backend API Docs",
 		},
 		DarkMode: true,
 	})
 	if err != nil {
-		return c.JSON(500, map[string]string{
+		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"status":  "error",
 			"message": err.Error(),
 		})
