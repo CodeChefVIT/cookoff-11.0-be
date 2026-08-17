@@ -7,3 +7,4 @@ CREATE TABLE visual_solutions (
 );
 -- +goose Down
 DROP TABLE visual_solutions;
+
