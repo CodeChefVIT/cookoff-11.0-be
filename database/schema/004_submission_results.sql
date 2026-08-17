@@ -1,6 +1,6 @@
 -- +goose Up
 CREATE TABLE submission_results (
-    id UUID NOT NULL UNIQUE,
+    id UUID NOT NULL,
 	testcase_id UUID,
     submission_id UUID NOT NULL,
     runtime DECIMAL NOT NULL,

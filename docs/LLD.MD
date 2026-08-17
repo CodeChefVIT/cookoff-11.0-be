@@ -89,7 +89,7 @@ erDiagram
         uuid id PK
         text title
         text description
-        text qType
+        text q_type
         text[] input_format
         numeric buy_in "nullable"
         numeric reward "nullable"
@@ -374,7 +374,7 @@ sequenceDiagram
 
 ### 2.8.1 Business Rules (as Specified)
 
-1. Round 1 questions (`questions.round = 1`, `qType = 'visual'` or similar) are solved by arranging `visual_blocks` rather than submitting source code to Judge0.
+1. Round 1 questions (`questions.round = 1`, `q_type = 'visual'` or similar) are solved by arranging `visual_blocks` rather than submitting source code to Judge0.
 2. A question can have **multiple valid solutions** — each stored as a separate row in `visual_solutions`, with its own ordered `solution UUID[]` (a sequence of `visual_blocks.id`) and its own `points` value.
 3. To **attempt** a question, a player must spend its `buy_in`. This is allowed only if `balance - buy_in >= 0`.
 4. **A question cannot be paid for twice.** `question_attempts.status` enforces this: once a row exists with `status IN ('bought', 'answered')`, a second `/attempt` call for the same `(user, question)` is rejected rather than deducting `buy_in` again.
