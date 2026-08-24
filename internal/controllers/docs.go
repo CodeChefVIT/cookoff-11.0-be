@@ -9,14 +9,17 @@ import (
 
 func ServeDocs(c echo.Context) error {
 	content, err := scalar.ApiReferenceHTML(&scalar.Options{
-		SpecURL: "/docs/swagger.yaml",
+		SpecURL: "./docs/docs.yaml",
 		CustomOptions: scalar.CustomOptions{
-			PageTitle: "Go Backend Template API Docs",
+			PageTitle: "Cookoff 11.0 Backend API Docs",
 		},
 		DarkMode: true,
 	})
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to load API documentation")
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"status":  "error",
+			"message": err.Error(),
+		})
 	}
 
 	return c.HTML(http.StatusOK, content)

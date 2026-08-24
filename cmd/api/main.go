@@ -10,10 +10,10 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/CodeChefVIT/go-backend-template/internal/logging"
-	"github.com/CodeChefVIT/go-backend-template/internal/middlewares"
-	"github.com/CodeChefVIT/go-backend-template/internal/router"
-	"github.com/CodeChefVIT/go-backend-template/internal/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/router"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"github.com/labstack/echo/v4"
 	emiddleware "github.com/labstack/echo/v4/middleware"
 )
@@ -23,7 +23,9 @@ func main() {
 	logging.InitLogger()
 
 	// Load configuration
-	utils.LoadConfig()
+	if err := utils.LoadConfig(); err != nil {
+		logging.Fatalf("Failed to load configuration: %v", err)
+	}
 
 	// Initialize DB pool
 	utils.InitDB()
@@ -43,18 +45,18 @@ func main() {
 	e.Use(emiddleware.Recover())
 	e.Use(middlewares.Logger)
 	e.Use(emiddleware.Secure())
-	e.Use(emiddleware.RateLimiter(emiddleware.NewRateLimiterMemoryStore(rate.Limit(utils.Config.RateLimitRPS))))
+	e.Use(emiddleware.RateLimiter(emiddleware.NewRateLimiterMemoryStore(rate.Limit(20))))
 	e.Use(emiddleware.BodyLimit("10M"))
 
 	// Configure CORS
-	if len(utils.Config.CORSOrigins) > 0 {
+	if len(utils.CORSOrigins) > 0 {
 		e.Use(emiddleware.CORSWithConfig(emiddleware.CORSConfig{
-			AllowOrigins:     utils.Config.CORSOrigins,
+			AllowOrigins:     utils.CORSOrigins,
 			AllowMethods:     []string{http.MethodGet, http.MethodHead, http.MethodPut, http.MethodPatch, http.MethodPost, http.MethodDelete},
 			AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 			AllowCredentials: true,
 		}))
-		logging.Infof("CORS enabled for origins: %v", utils.Config.CORSOrigins)
+		logging.Infof("CORS enabled for origins: %v", utils.CORSOrigins)
 	}
 
 	// Register routes
@@ -89,7 +91,7 @@ func main() {
 	}
 
 	// Shutdown Echo context with configurable timeout
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), utils.Config.ShutdownTimeout)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := e.Shutdown(shutdownCtx); err != nil {

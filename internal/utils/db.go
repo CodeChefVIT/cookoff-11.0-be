@@ -5,31 +5,25 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/CodeChefVIT/go-backend-template/internal/logging"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var DBPool *pgxpool.Pool
 
 func InitDB() {
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		Config.PostgresUser,
 		Config.PostgresPassword,
 		Config.PostgresHost,
 		Config.PostgresPort,
 		Config.PostgresDB,
-		Config.PostgresSSLMode,
 	)
 
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		logging.Fatalf("Unable to parse database DSN: %v", err)
 	}
-
-	config.MaxConns = Config.PostgresMaxConns
-	config.MinConns = Config.PostgresMinConns
-	config.MaxConnLifetime = Config.PostgresMaxConnLifetime
-	config.MaxConnIdleTime = Config.PostgresMaxConnIdleTime
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -20,6 +20,7 @@ WORKDIR /app
 
 # Copy the built binary from the builder stage
 COPY --from=builder /app/main ./main
+COPY --from=builder /src/docs ./docs
 
 # Create non-root user and set permissions
 RUN addgroup -S app && adduser -S -G app app && chown app:app /app/main

@@ -6,7 +6,13 @@ all: build
 setup:
 	@echo "Configuring git hooks..."
 	@git config core.hooksPath .githooks
-	@echo "Done. Pre-commit checks will now run before every commit."
+	@echo "Installing development tools..."
+	@go install github.com/air-verse/air@latest
+	@go install github.com/pressly/goose/v3/cmd/goose@latest
+	@go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@go install golang.org/x/vuln/cmd/govulncheck@latest
+	@echo "Done. Setup completed successfully."
 
 build:
 	@echo "Building binary..."

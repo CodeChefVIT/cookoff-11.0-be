@@ -19,7 +19,6 @@ tmp/
 .idea/
 
 # Documentation (not needed in image)
-docs/
 README.md
 
 # Tests

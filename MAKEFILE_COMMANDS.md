@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes all available `make` commands in this Go backend template.
+This document describes all available `make` commands in the Cookoff 11.0 Go backend.
 
 ---
 

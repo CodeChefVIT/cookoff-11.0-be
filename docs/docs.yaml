@@ -1,8 +1,8 @@
 openapi: 3.0.0
 info:
-  title: Go Backend Template API
+  title: Cookoff 11.0 Backend API
   version: 1.0.0
-  description: API documentation for the CodeChefVIT Go Backend Template.
+  description: API documentation for CodeChefVIT Cookoff 11.0 Backend.
 servers:
   - url: http://localhost:8080
     description: Local development server

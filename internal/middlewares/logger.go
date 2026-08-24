@@ -3,7 +3,7 @@ package middlewares
 import (
 	"time"
 
-	"github.com/CodeChefVIT/go-backend-template/internal/logging"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/labstack/echo/v4"
 )
 
