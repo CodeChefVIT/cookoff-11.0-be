@@ -8,6 +8,7 @@ import (
 	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helper"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -37,10 +38,17 @@ func (c *AttemptController) CreateAttempt(ctx echo.Context) error {
 		))
 	}
 
-	userID, isAuthenticated := ctx.Get("userID").(uuid.UUID)
-	if !isAuthenticated {
+	claims, ok := ctx.Get("user").(*middlewares.JWTClaims)
+	if !ok {
 		return ctx.JSON(http.StatusUnauthorized, dto.NewErrorResponse(
 			"Unauthorized", nil,
+		))
+	}
+
+	userID, err := uuid.Parse(claims.UserID)
+	if err != nil {
+		return ctx.JSON(http.StatusBadRequest, dto.NewErrorResponse(
+			"Invalid user ID", nil,
 		))
 	}
 
