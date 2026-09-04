@@ -13,8 +13,6 @@ import(
 )
 
 
-//rename this
-
 //Contains stuff only related to submission request made to judge0
 
 
