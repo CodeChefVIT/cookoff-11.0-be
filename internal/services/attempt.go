@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
+	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helper"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -18,10 +18,10 @@ var (
 
 type AttemptService struct {
 	db      *pgxpool.Pool
-	queries *db.Queries
+	queries *sqlc.Queries
 }
 
-func NewAttemptService(db *pgxpool.Pool, queries *db.Queries) *AttemptService {
+func NewAttemptService(db *pgxpool.Pool, queries *sqlc.Queries) *AttemptService {
 	return &AttemptService{
 		db:      db,
 		queries: queries,
@@ -31,7 +31,8 @@ func NewAttemptService(db *pgxpool.Pool, queries *db.Queries) *AttemptService {
 func (s *AttemptService) CreateAttempt(
 	ctx context.Context,
 	userID uuid.UUID,
-	questionID uuid.UUID) error {
+	questionID uuid.UUID,
+) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -41,7 +42,7 @@ func (s *AttemptService) CreateAttempt(
 
 	qtx := s.queries.WithTx(tx)
 
-	_, err = qtx.GetAttemptForUpdate(ctx, db.GetAttemptForUpdateParams{
+	_, err = qtx.GetAttemptForUpdate(ctx, sqlc.GetAttemptForUpdateParams{
 		UserID:     userID,
 		QuestionID: questionID,
 	})
@@ -83,7 +84,7 @@ func (s *AttemptService) CreateAttempt(
 		return err
 	}
 
-	err = qtx.UpdateUserBalance(ctx, db.UpdateUserBalanceParams{
+	err = qtx.UpdateUserBalance(ctx, sqlc.UpdateUserBalanceParams{
 		ID:      userID,
 		Balance: newBalanceNumeric,
 	})
@@ -91,14 +92,13 @@ func (s *AttemptService) CreateAttempt(
 		return err
 	}
 
-	_, err = qtx.CreateAttempt(ctx, db.CreateAttemptParams{
+	_, err = qtx.CreateAttempt(ctx, sqlc.CreateAttemptParams{
 		ID:          uuid.New(),
 		UserID:      userID,
 		QuestionID:  questionID,
 		Status:      "bought",
 		IsBuyInPaid: true,
 	})
-
 	if err != nil {
 		return err
 	}
