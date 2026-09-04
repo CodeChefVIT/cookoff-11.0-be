@@ -13,10 +13,14 @@ import (
 
 type Querier interface {
 	CreateAttempt(ctx context.Context, arg CreateAttemptParams) (Attempt, error)
+	CreateVisualSubmission(ctx context.Context, arg CreateVisualSubmissionParams) (Submission, error)
 	GetAttemptForUpdate(ctx context.Context, arg GetAttemptForUpdateParams) (Attempt, error)
 	GetQuestionBuyIn(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
 	GetUserBalanceForUpdate(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
+	ListVisualSolutionsByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualSolution, error)
+	UpdateAttemptStatus(ctx context.Context, arg UpdateAttemptStatusParams) error
 	UpdateUserBalance(ctx context.Context, arg UpdateUserBalanceParams) error
+	UpdateUserScore(ctx context.Context, arg UpdateUserScoreParams) error
 }
 
 var _ Querier = (*Queries)(nil)
