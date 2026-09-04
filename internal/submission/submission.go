@@ -8,7 +8,7 @@ import(
 	"bytes"
 	"net/http"
 	"net/url"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 )
 
@@ -31,7 +31,7 @@ type judge0Submission struct{
 
 
 //returns a payload for a batch submission of all the testcases
-func CreateSubmissionPayload(sourceCode string, languageID int, testCases []db.Testcase) ([]byte, error){
+func CreateSubmissionPayload(sourceCode string, languageID int, testCases []sqlc.GetAllTestCasesByQuestionRow) ([]byte, error){
 	submissions := make([]judge0Submission, len(testCases))
 
 	callbackURL := utils.Config.CallbackURL
