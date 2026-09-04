@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"github.com/labstack/echo/v4"
@@ -23,11 +24,11 @@ func HealthCheck(c echo.Context) error {
 	// Check PostgreSQL
 	go func() {
 		defer wg.Done()
-		if utils.DBPool == nil {
+		if db.DBPool == nil {
 			pgStatus = "DOWN"
 			return
 		}
-		if err := utils.DBPool.Ping(ctx); err != nil {
+		if err := db.DBPool.Ping(ctx); err != nil {
 			pgStatus = "DOWN"
 			return
 		}
