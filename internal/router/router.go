@@ -9,4 +9,11 @@ func RegisterRoutes(e *echo.Echo) {
 	// Standard operational routes
 	e.GET("/health", controllers.HealthCheck)
 	e.GET("/docs", controllers.ServeDocs)
+
+
+	//judge0 callback req
+	//e.PUT("/judge0callback", controllers.Judge0CallBack)
+
+	//for now all routes in same place, separate them later
+	e.POST("/submit", controllers.Submit)
 }

@@ -4,13 +4,18 @@ import(
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"os"
 	"errors"
 	"bytes"
 	"net/http"
 	"net/url"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 )
+
+
+//rename this
+
+//Contains stuff only related to submission request made to judge0
 
 
 //intentionally left private
@@ -29,26 +34,29 @@ type judge0Submission struct{
 func CreateSubmissionPayload(sourceCode string, languageID int, testCases []db.Testcase) ([]byte, error){
 	submissions := make([]judge0Submission, len(testCases))
 
-	callbackURL := os.Getenv("CALLBACK_URL")
+	callbackURL := utils.Config.CallbackURL
 	if callbackURL==""{
 		return nil, errors.New("Environment Variable CALLBACK_URL not set")
 	}
 
 	for i, testcase := range testCases{
-		execution_timeout, err := testcase.Runtime.Float64Value()
+		execution_timeout_t, err := testcase.Runtime.Float64Value()
 		if err!=nil{
 			return nil, err
 		}
 
-		//do runtime multiplier thing here
-		//or in the controller(preferred)
+		//could do this in the controller as well (preferred)
+		execution_timeout := execution_timeout_t.Float64*utils.GetRuntimeMultiplier(languageID)
+		if execution_timeout==0{
+			return nil, errors.New("Invalid languageID or execution_timeout")
+		}
 
 		submissions[i]=judge0Submission{
 			SourceCode : base64.StdEncoding.EncodeToString([]byte(sourceCode)),
 			LanguageID : languageID,
 			Stdin : base64.StdEncoding.EncodeToString([]byte(testcase.Input)),
 			ExpectedOutput : base64.StdEncoding.EncodeToString([]byte(testcase.ExpectedOutput)),
-			ExecutionTimeout : execution_timeout.Float64,//would prefer ExecutionTimeout over Runtime
+			ExecutionTimeout : execution_timeout,//would prefer ExecutionTimeout over Runtime
 			Callback : callbackURL,
 		}
 	}
@@ -63,8 +71,8 @@ func CreateSubmissionPayload(sourceCode string, languageID int, testCases []db.T
 
 
 //sends a payload to judge0 for evaluation
-func SendSubmissionPayload(payload []byte) (*http.Response, error){
-	baseURI := os.Getenv("JUDGE0_URI")
+func SendSubmissionPayload(client *http.Client, payload []byte) (*http.Response, error){
+	baseURI := utils.Config.Judge0URI
 	if baseURI==""{
 		return nil, errors.New("Environment Variable JUDGE0_URI not set")
 	}
@@ -73,8 +81,6 @@ func SendSubmissionPayload(payload []byte) (*http.Response, error){
 	params.Add("base64_encoded", "true")
 
 	finalURI := baseURI+"/submissions/batch?"+params.Encode()
-
-	client := &http.Client{}
 
 	req, err := http.NewRequest("POST", finalURI, bytes.NewReader(payload))
 	if err!=nil{
