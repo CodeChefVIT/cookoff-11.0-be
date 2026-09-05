@@ -10,6 +10,7 @@ import (
 
 	"golang.org/x/time/rate"
 
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/router"
@@ -28,8 +29,8 @@ func main() {
 	}
 
 	// Initialize DB pool
-	utils.InitDB()
-	defer utils.CloseDB()
+	db.InitDB()
+	defer db.CloseDB()
 
 	// Initialize Redis
 	utils.InitRedis()
