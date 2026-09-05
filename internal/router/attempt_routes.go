@@ -15,5 +15,5 @@ func RegisterAttemptRoutes(e *echo.Echo) {
 		db.DBPool,
 		queries,
 	)
-	e.POST("/attempts/:id", attemptController.CreateAttempt, middlewares.JWTAuth)
+	e.POST("/question/attempt/:id", attemptController.CreateAttempt, middlewares.JWTAuth)
 }
