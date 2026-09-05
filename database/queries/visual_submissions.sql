@@ -34,3 +34,14 @@ VALUES(
     $6
 )
 RETURNING *;
+
+-- name: GetUserScoreForUpdate :one
+SELECT score
+FROM users
+WHERE id = $1
+FOR UPDATE;
+
+-- name: GetQuestionReward :one 
+SELECT reward
+FROM questions
+WHERE id = $1;

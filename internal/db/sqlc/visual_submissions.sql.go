@@ -68,6 +68,33 @@ func (q *Queries) CreateVisualSubmission(ctx context.Context, arg CreateVisualSu
 	return i, err
 }
 
+const getQuestionReward = `-- name: GetQuestionReward :one
+SELECT reward
+FROM questions
+WHERE id = $1
+`
+
+func (q *Queries) GetQuestionReward(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, getQuestionReward, id)
+	var reward pgtype.Numeric
+	err := row.Scan(&reward)
+	return reward, err
+}
+
+const getUserScoreForUpdate = `-- name: GetUserScoreForUpdate :one
+SELECT score
+FROM users
+WHERE id = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetUserScoreForUpdate(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, getUserScoreForUpdate, id)
+	var score pgtype.Numeric
+	err := row.Scan(&score)
+	return score, err
+}
+
 const listVisualSolutionsByQuestionID = `-- name: ListVisualSolutionsByQuestionID :many
 SELECT id,question_id,solution,points
 FROM visual_solutions

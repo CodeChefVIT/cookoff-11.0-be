@@ -16,7 +16,12 @@ type Querier interface {
 	CreateVisualSubmission(ctx context.Context, arg CreateVisualSubmissionParams) (Submission, error)
 	GetAttemptForUpdate(ctx context.Context, arg GetAttemptForUpdateParams) (Attempt, error)
 	GetQuestionBuyIn(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
+	GetQuestionReward(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
+	//this query is already there in vihaan's pr just making it here to use it for the submit sequence
+	GetRoundOneVisualQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetUserBalanceForUpdate(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
+	GetUserScoreForUpdate(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
+	ListVisualBlocksByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualBlock, error)
 	ListVisualSolutionsByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualSolution, error)
 	UpdateAttemptStatus(ctx context.Context, arg UpdateAttemptStatusParams) error
 	UpdateUserBalance(ctx context.Context, arg UpdateUserBalanceParams) error
