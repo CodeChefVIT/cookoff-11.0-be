@@ -7,8 +7,8 @@ import (
 
 	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helper"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -52,7 +52,7 @@ func (c *AttemptController) CreateAttempt(ctx echo.Context) error {
 		))
 	}
 
-	err = c.createAttempt(
+	attempt, err := c.createAttempt(
 		ctx.Request().Context(),
 		userID,
 		questionID,
@@ -78,7 +78,7 @@ func (c *AttemptController) CreateAttempt(ctx echo.Context) error {
 	}
 
 	return ctx.JSON(http.StatusOK, dto.NewSuccessResponse(
-		"Attempt created successfully", nil,
+		"Attempt created successfully", attempt,
 	))
 }
 
@@ -91,10 +91,10 @@ func (c *AttemptController) createAttempt(
 	ctx context.Context,
 	userID uuid.UUID,
 	questionID uuid.UUID,
-) error {
+) (sqlc.Attempt, error) {
 	tx, err := c.db.Begin(ctx)
 	if err != nil {
-		return err
+		return sqlc.Attempt{}, err
 	}
 
 	defer tx.Rollback(ctx)
@@ -106,42 +106,42 @@ func (c *AttemptController) createAttempt(
 		QuestionID: questionID,
 	})
 	if err == nil {
-		return ErrAttemptAlreadyExists
+		return sqlc.Attempt{}, ErrAttemptAlreadyExists
 	}
 
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return err
+		return sqlc.Attempt{}, err
 	}
 
 	balanceNumeric, err := qtx.GetUserBalanceForUpdate(ctx, userID)
 	if err != nil {
-		return err
+		return sqlc.Attempt{}, err
 	}
 
 	buyInNumeric, err := qtx.GetQuestionBuyIn(ctx, questionID)
 	if err != nil {
-		return err
+		return sqlc.Attempt{}, err
 	}
 
-	balance, err := helper.NumericToFloat64(balanceNumeric)
+	balance, err := utils.NumericToFloat64(balanceNumeric)
 	if err != nil {
-		return err
+		return sqlc.Attempt{}, err
 	}
 
-	buyIn, err := helper.NumericToFloat64(buyInNumeric)
+	buyIn, err := utils.NumericToFloat64(buyInNumeric)
 	if err != nil {
-		return err
+		return sqlc.Attempt{}, err
 	}
 
 	if balance < buyIn {
-		return ErrInsufficientBalance
+		return sqlc.Attempt{}, ErrInsufficientBalance
 	}
 
 	balance -= buyIn
 
-	newBalanceNumeric, err := helper.Float64ToNumeric(balance)
+	newBalanceNumeric, err := utils.Float64ToNumeric(balance)
 	if err != nil {
-		return err
+		return sqlc.Attempt{}, err
 	}
 
 	err = qtx.UpdateUserBalance(ctx, sqlc.UpdateUserBalanceParams{
@@ -149,10 +149,10 @@ func (c *AttemptController) createAttempt(
 		Balance: newBalanceNumeric,
 	})
 	if err != nil {
-		return err
+		return sqlc.Attempt{}, err
 	}
 
-	_, err = qtx.CreateAttempt(ctx, sqlc.CreateAttemptParams{
+	attempt, err := qtx.CreateAttempt(ctx, sqlc.CreateAttemptParams{
 		ID:          uuid.New(),
 		UserID:      userID,
 		QuestionID:  questionID,
@@ -160,8 +160,8 @@ func (c *AttemptController) createAttempt(
 		IsBuyInPaid: true,
 	})
 	if err != nil {
-		return err
+		return sqlc.Attempt{}, err
 	}
 
-	return tx.Commit(ctx)
+	return attempt, err
 }
