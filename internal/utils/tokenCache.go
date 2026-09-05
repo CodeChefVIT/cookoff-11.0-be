@@ -1,4 +1,3 @@
-// internal/utils/tokenCache.go
 package utils
 
 import (
@@ -10,12 +9,9 @@ import (
 	"time"
 )
 
-// TokenCache is a dedicated Redis client for the Judge0 token <-> submission
-// mapping, kept separate from the general-purpose RedisClient (see redis.go)
-// per LLD §2.1.
+
 var TokenCache *redis.Client
 
-// the type. redis.Client is a struct (a bundle of fields) defined inside the go-redis library that represents "a connection to a Redis server." The * in front means this variable doesn't hold the actual Client struct — it holds a pointer, i.e. the address of one.
 func InitTokenCache() {
 	addr := fmt.Sprintf("%s:%s", Config.RedisHost, Config.RedisPort)
 	TokenCache = redis.NewClient(&redis.Options{
@@ -60,8 +56,7 @@ func CacheToken(ctx context.Context, token string, submissionID string, testcase
 	return nil
 }
 
-// GetSubmissionIDByToken resolves a Judge0 token back into (submissionID, testcaseID).
-// Called by the worker on every callback per LLD §2.6.
+
 func GetSubmissionIDByToken(ctx context.Context, token string) (submissionID, testcaseID string, err error) {
 	val, err := TokenCache.Get(ctx, tokenKey(token)).Result()
 	if err != nil {
@@ -74,8 +69,7 @@ func GetSubmissionIDByToken(ctx context.Context, token string) (submissionID, te
 	return parts[0], parts[1], nil
 }
 
-// DeleteToken removes a resolved token from both the direct mapping and the
-// submission's outstanding-token set, atomically.
+
 func DeleteToken(ctx context.Context, token, submissionID string) error {
 	pipe := TokenCache.TxPipeline()
 	pipe.Del(ctx, tokenKey(token))
@@ -86,8 +80,7 @@ func DeleteToken(ctx context.Context, token, submissionID string) error {
 	return nil
 }
 
-// GetTokenCount returns how many Judge0 tokens are still outstanding for a
-// submission. When this hits 0, the worker finalizes the submission.
+
 func GetTokenCount(ctx context.Context, submissionID string) (int64, error) {
 	count, err := TokenCache.SCard(ctx, submissionTokensKey(submissionID)).Result()
 	if err != nil {
