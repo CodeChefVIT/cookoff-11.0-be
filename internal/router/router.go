@@ -12,8 +12,9 @@ func RegisterRoutes(e *echo.Echo) {
 
 
 	//judge0 callback req
-	//e.PUT("/judge0callback", controllers.Judge0CallBack)
+	e.PUT("/judge0callback", controllers.Judge0CallBack)
 
 	//for now all routes in same place, separate them later
 	e.POST("/submit", controllers.SubmitCode)
+	e.GET("/result/:submission_id", controllers.GetResult)
 }
