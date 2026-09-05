@@ -44,7 +44,7 @@ func CreateSubmissionPayload(sourceCode string, languageID int, testCases []sqlc
 		}
 
 		//could do this in the controller as well (preferred)
-		execution_timeout := execution_timeout_t.Float64*utils.GetRuntimeMultiplier(languageID)
+		execution_timeout := execution_timeout_t.Float64*utils.GetExecutionTimeMultiplier(languageID)
 		if execution_timeout==0{
 			return nil, errors.New("Invalid languageID or execution_timeout")
 		}
