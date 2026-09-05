@@ -30,6 +30,9 @@ func SubmitCode(c echo.Context) error {
 
 
 	questionID, err := uuid.Parse(req.QuestionID)
+	if err!=nil{
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "invalid QuestionID"})
+	}
 
 	submissionID := uuid.New()
 	fmt.Errorf("%v", submissionID)
