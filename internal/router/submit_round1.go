@@ -8,12 +8,11 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func RegisterAttemptRoutes(e *echo.Echo) {
-	queries := sqlc.New(db.DBPool)
-
-	attemptController := controllers.NewAttemptController(
+func RegisterVisualSubmissionRoutes(e *echo.Echo) {
+	visualSubmissionController := controllers.NewVisualSubmissionController(
 		db.DBPool,
-		queries,
+		sqlc.New(db.DBPool),
 	)
-	e.POST("/attempts/:id", attemptController.CreateAttempt, middlewares.JWTAuth)
+	e.POST("/submit/visual", visualSubmissionController.SubmitVisualSolution, middlewares.JWTAuth)
+
 }

@@ -12,5 +12,8 @@ func RegisterRoutes(
 	e.GET("/docs", controllers.ServeDocs)
 
 	RegisterAttemptRoutes(e)
+	RegisterVisualSubmissionRoutes(e)
+
+	RegisterAttemptRoutes(e)
 
 }

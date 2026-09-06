@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.30.0
 
-package db
+package sqlc
 
 import (
 	"github.com/google/uuid"
@@ -76,7 +76,6 @@ type User struct {
 	ID             uuid.UUID
 	Email          string
 	RegNo          string
-	Password       string
 	Role           string
 	RoundQualified int32
 	GoogleID       *string
