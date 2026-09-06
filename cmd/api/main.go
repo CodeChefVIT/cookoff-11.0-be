@@ -39,7 +39,7 @@ func main() {
 	// Initialize Echo instance
 	e := echo.New()
 
-	// Initialize Token Cache (Redis) 
+	// Initialize Token Cache (Redis)
 	utils.InitTokenCache()
 	defer utils.CloseTokenCache()
 

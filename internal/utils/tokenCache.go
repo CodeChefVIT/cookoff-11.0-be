@@ -9,7 +9,6 @@ import (
 	"time"
 )
 
-
 var TokenCache *redis.Client
 
 func InitTokenCache() {
@@ -56,7 +55,6 @@ func CacheToken(ctx context.Context, token string, submissionID string, testcase
 	return nil
 }
 
-
 func GetSubmissionIDByToken(ctx context.Context, token string) (submissionID, testcaseID string, err error) {
 	val, err := TokenCache.Get(ctx, tokenKey(token)).Result()
 	if err != nil {
@@ -69,7 +67,6 @@ func GetSubmissionIDByToken(ctx context.Context, token string) (submissionID, te
 	return parts[0], parts[1], nil
 }
 
-
 func DeleteToken(ctx context.Context, token, submissionID string) error {
 	pipe := TokenCache.TxPipeline()
 	pipe.Del(ctx, tokenKey(token))
@@ -79,7 +76,6 @@ func DeleteToken(ctx context.Context, token, submissionID string) error {
 	}
 	return nil
 }
-
 
 func GetTokenCount(ctx context.Context, submissionID string) (int64, error) {
 	count, err := TokenCache.SCard(ctx, submissionTokensKey(submissionID)).Result()
