@@ -4,7 +4,6 @@ import (
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/controllers"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"github.com/labstack/echo/v4"
 )
 
@@ -13,7 +12,7 @@ func RegisterRoutes(e *echo.Echo) {
 	e.GET("/health", controllers.HealthCheck)
 	e.GET("/docs", controllers.ServeDocs)
 
-	questionController := controllers.NewQuestionController(db.New(utils.DBPool))
+	questionController := controllers.NewQuestionController(db.New(db.DBPool))
 	questionRoutes := e.Group("/question", middlewares.JWTAuth)
 	// Add BanCheckUser to this group when the shared authorization middleware lands.
 	questionRoutes.GET("/round", questionController.ListByRound)

@@ -3,7 +3,6 @@ CREATE TABLE users (
 	id UUID NOT NULL,
 	email TEXT NOT NULL UNIQUE, 
 	reg_no TEXT NOT NULL UNIQUE,
-	password TEXT NOT NULL,
 	role TEXT NOT NULL,
 	round_qualified INTEGER NOT NULL DEFAULT 0,
 	google_id TEXT UNIQUE NULL,
