@@ -21,6 +21,8 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
+	c.Validate(req)
+
 	//get user id here
 	//userID := 
 
@@ -31,7 +33,7 @@ func SubmitCode(c echo.Context) error {
 
 	questionID, err := uuid.Parse(req.QuestionID)
 	if err!=nil{
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "invalid QuestionID"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
 	submissionID := uuid.New()
