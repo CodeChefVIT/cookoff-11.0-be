@@ -31,6 +31,8 @@ type Querier interface {
 	GetRoundOneVisualQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submission, error)
 	GetSubmissionResults(ctx context.Context, submissionID uuid.UUID) ([]SubmissionResult, error)
+	GetSubmissionResultsBySubmissionID(ctx context.Context, submissionID uuid.UUID) ([]GetSubmissionResultsBySubmissionIDRow, error)
+	GetSubmissionStatusByID(ctx context.Context, id uuid.UUID) (*string, error)
 	GetTestCaseByID(ctx context.Context, id uuid.UUID) (Testcase, error)
 	GetUserBalanceForUpdate(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
 	GetUserByGoogleID(ctx context.Context, googleID *string) (User, error)

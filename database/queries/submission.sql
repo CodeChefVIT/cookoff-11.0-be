@@ -19,3 +19,24 @@ INSERT INTO submissions (
 -- name: GetSubmissionByID :one
 SELECT * FROM submissions
 WHERE id = $1;
+
+
+-- name: GetSubmissionStatusByID :one
+SELECT status
+FROM submissions
+WHERE id = $1;
+
+
+-- name: GetSubmissionResultsBySubmissionID :many
+SELECT
+    id,
+    submission_id,
+	testcase_id,
+    runtime,
+    memory,
+    points_awarded,
+	status,
+    description
+
+FROM submission_results
+WHERE submission_id = $1;

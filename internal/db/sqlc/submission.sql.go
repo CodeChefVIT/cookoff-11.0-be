@@ -88,3 +88,71 @@ func (q *Queries) GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submissi
 	)
 	return i, err
 }
+
+const getSubmissionResultsBySubmissionID = `-- name: GetSubmissionResultsBySubmissionID :many
+SELECT
+    id,
+    submission_id,
+	testcase_id,
+    runtime,
+    memory,
+    points_awarded,
+	status,
+    description
+
+FROM submission_results
+WHERE submission_id = $1
+`
+
+type GetSubmissionResultsBySubmissionIDRow struct {
+	ID            uuid.UUID
+	SubmissionID  uuid.UUID
+	TestcaseID    pgtype.UUID
+	Runtime       pgtype.Numeric
+	Memory        pgtype.Numeric
+	PointsAwarded int32
+	Status        string
+	Description   *string
+}
+
+func (q *Queries) GetSubmissionResultsBySubmissionID(ctx context.Context, submissionID uuid.UUID) ([]GetSubmissionResultsBySubmissionIDRow, error) {
+	rows, err := q.db.Query(ctx, getSubmissionResultsBySubmissionID, submissionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetSubmissionResultsBySubmissionIDRow
+	for rows.Next() {
+		var i GetSubmissionResultsBySubmissionIDRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SubmissionID,
+			&i.TestcaseID,
+			&i.Runtime,
+			&i.Memory,
+			&i.PointsAwarded,
+			&i.Status,
+			&i.Description,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getSubmissionStatusByID = `-- name: GetSubmissionStatusByID :one
+SELECT status
+FROM submissions
+WHERE id = $1
+`
+
+func (q *Queries) GetSubmissionStatusByID(ctx context.Context, id uuid.UUID) (*string, error) {
+	row := q.db.QueryRow(ctx, getSubmissionStatusByID, id)
+	var status *string
+	err := row.Scan(&status)
+	return status, err
+}
