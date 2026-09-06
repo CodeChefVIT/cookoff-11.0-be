@@ -355,13 +355,12 @@ sequenceDiagram
    * Alternatively, some teams may choose to auto-charge `buy_in` inline here instead of requiring a separate `/attempt` call. Either way, the balance check in §2.8.3 applies.
    * `status = 'bought'` or `status = 'answered'` → proceed. An already-`answered` question can still be resubmitted for practice; it just won't pay out again, per §2.6.
 6. Generate a fresh `submissionID` (`uuid.New()`).
-7. `submissions.CreateSubmission(ctx, questionID, languageID, sourceCode)`:
+7. Fetch all the test cases and generate a payload with `CreateSubmissionPayload(sourceCode string, languageID int, testCases []db.TestCase)`:
 
-   * Fetches all testcases for the question.
    * Computes a language-specific runtime multiplier (`RuntimeMut`).
    * Base64-encodes source/stdin/expected-output per Judge0's batch API contract.
    * Builds a `Judge0Submission` per testcase, each carrying the shared `CallbackURL`.
-8. POST the batch payload to `Judge0URI/submissions/batch?base64_encoded=true` via `submissions.SendToJudge`.
+8. POST the batch payload to `Judge0URI/submissions/batch?base64_encoded=true` via `submissions.SendSubmissionPayload`.
 9. On `201 Created`, decode the returned `[]Token`.
 10. For each token:
 
