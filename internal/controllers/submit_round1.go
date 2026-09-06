@@ -9,8 +9,8 @@ import (
 
 	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helper"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -177,7 +177,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 	for _, solution := range solutions {
 		if uuidSlicesEqual(solution.Solution, req.Blocks) {
 			isCorrect = true
-			solutionPoints, err = helper.NumericToFloat64(solution.Points)
+			solutionPoints, err = utils.NumericToFloat64(solution.Points)
 			if err != nil {
 				return 0, err
 			}
@@ -220,14 +220,14 @@ func (c *VisualSubmissionController) submitVisualSolution(
 		if err != nil {
 			return 0, err
 		}
-		currentScore, err := helper.NumericToFloat64(currentScoreNumeric)
+		currentScore, err := utils.NumericToFloat64(currentScoreNumeric)
 		if err != nil {
 			return 0, err
 		}
 
 		newScore := currentScore + solutionPoints
 
-		newScoreNumeric, err := helper.Float64ToNumeric(newScore)
+		newScoreNumeric, err := utils.Float64ToNumeric(newScore)
 		if err != nil {
 			return 0, err
 		}
@@ -252,18 +252,18 @@ func (c *VisualSubmissionController) submitVisualSolution(
 			return 0, err
 		}
 
-		questionReward, err := helper.NumericToFloat64(questionRewardNumeric)
+		questionReward, err := utils.NumericToFloat64(questionRewardNumeric)
 		if err != nil {
 			return 0, err
 		}
-		currentBalance, err := helper.NumericToFloat64(currentUserBalanceNumeric)
+		currentBalance, err := utils.NumericToFloat64(currentUserBalanceNumeric)
 		if err != nil {
 			return 0, err
 		}
 
 		newBalance := currentBalance + questionReward
 
-		newBalanceNumeric, err := helper.Float64ToNumeric(newBalance)
+		newBalanceNumeric, err := utils.Float64ToNumeric(newBalance)
 		if err != nil {
 			return 0, err
 		}

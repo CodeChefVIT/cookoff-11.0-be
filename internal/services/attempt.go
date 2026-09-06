@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helper"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -62,12 +62,12 @@ func (s *AttemptService) CreateAttempt(
 		return err
 	}
 
-	balance, err := helper.NumericToFloat64(balanceNumeric)
+	balance, err := utils.NumericToFloat64(balanceNumeric)
 	if err != nil {
 		return err
 	}
 
-	buyIn, err := helper.NumericToFloat64(buyInNumeric)
+	buyIn, err := utils.NumericToFloat64(buyInNumeric)
 	if err != nil {
 		return err
 	}
@@ -78,7 +78,7 @@ func (s *AttemptService) CreateAttempt(
 
 	balance -= buyIn
 
-	newBalanceNumeric, err := helper.Float64ToNumeric(balance)
+	newBalanceNumeric, err := utils.Float64ToNumeric(balance)
 	if err != nil {
 		return err
 	}
