@@ -8,16 +8,28 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
+	CreateAttempt(ctx context.Context, arg CreateAttemptParams) (Attempt, error)
 	CreateSubmission(ctx context.Context, arg CreateSubmissionParams) error
 	CreateTestCase(ctx context.Context, arg CreateTestCaseParams) (Testcase, error)
+	CreateVisualSubmission(ctx context.Context, arg CreateVisualSubmissionParams) (Submission, error)
 	GetAllTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]GetAllTestCasesByQuestionRow, error)
+	GetAttemptForUpdate(ctx context.Context, arg GetAttemptForUpdateParams) (Attempt, error)
 	GetQuestionByID(ctx context.Context, id uuid.UUID) (GetQuestionByIDRow, error)
+	GetQuestionBuyIn(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
+	GetQuestionReward(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
 	GetRoundOneVisualQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	GetUserBalanceForUpdate(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
+	GetUserScoreForUpdate(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
 	ListQuestionsByRound(ctx context.Context, round int32) ([]ListQuestionsByRoundRow, error)
 	ListVisualBlocksByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualBlock, error)
+	ListVisualSolutionsByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualSolution, error)
+	UpdateAttemptStatus(ctx context.Context, arg UpdateAttemptStatusParams) error
+	UpdateUserBalance(ctx context.Context, arg UpdateUserBalanceParams) error
+	UpdateUserScore(ctx context.Context, arg UpdateUserScoreParams) error
 }
 
 var _ Querier = (*Queries)(nil)

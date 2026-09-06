@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
+	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -13,10 +13,10 @@ import (
 )
 
 type QuestionController struct {
-	queries db.Querier
+	queries sqlc.Querier
 }
 
-func NewQuestionController(queries db.Querier) *QuestionController {
+func NewQuestionController(queries sqlc.Querier) *QuestionController {
 	return &QuestionController{queries: queries}
 }
 
@@ -89,7 +89,7 @@ func questionError(c echo.Context, status int, message string) error {
 	return c.JSON(status, dto.NewErrorResponse(message, nil))
 }
 
-func questionResponse(question db.GetQuestionByIDRow) dto.QuestionResponse {
+func questionResponse(question sqlc.GetQuestionByIDRow) dto.QuestionResponse {
 	return dto.QuestionResponse{
 		ID:               question.ID,
 		Description:      question.Description,
@@ -108,7 +108,7 @@ func questionResponse(question db.GetQuestionByIDRow) dto.QuestionResponse {
 	}
 }
 
-func questionListResponse(question db.ListQuestionsByRoundRow) dto.QuestionResponse {
+func questionListResponse(question sqlc.ListQuestionsByRoundRow) dto.QuestionResponse {
 	return dto.QuestionResponse{
 		ID:               question.ID,
 		Description:      question.Description,
