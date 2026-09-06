@@ -14,6 +14,10 @@ type Querier interface {
 	CreateSubmission(ctx context.Context, arg CreateSubmissionParams) error
 	CreateTestCase(ctx context.Context, arg CreateTestCaseParams) (Testcase, error)
 	GetAllTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]GetAllTestCasesByQuestionRow, error)
+	GetQuestionByID(ctx context.Context, id uuid.UUID) (GetQuestionByIDRow, error)
+	GetRoundOneVisualQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	ListQuestionsByRound(ctx context.Context, round int32) ([]ListQuestionsByRoundRow, error)
+	ListVisualBlocksByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualBlock, error)
 }
 
 var _ Querier = (*Queries)(nil)
