@@ -16,6 +16,9 @@
 .env.local
 .env.*.local
 
+# Local docker compose overrides (e.g. non-default host ports)
+docker-compose.override.yml
+
 # Dependency directories
 /vendor/
 

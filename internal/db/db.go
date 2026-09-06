@@ -1,4 +1,4 @@
-package utils
+package db
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -13,11 +14,11 @@ var DBPool *pgxpool.Pool
 
 func InitDB() {
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		Config.PostgresUser,
-		Config.PostgresPassword,
-		Config.PostgresHost,
-		Config.PostgresPort,
-		Config.PostgresDB,
+		utils.Config.PostgresUser,
+		utils.Config.PostgresPassword,
+		utils.Config.PostgresHost,
+		utils.Config.PostgresPort,
+		utils.Config.PostgresDB,
 	)
 
 	config, err := pgxpool.ParseConfig(dsn)
