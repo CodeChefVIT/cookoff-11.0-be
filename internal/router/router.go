@@ -12,6 +12,16 @@ func RegisterRoutes(e *echo.Echo) {
 	e.GET("/health", controllers.HealthCheck)
 	e.GET("/docs", controllers.ServeDocs)
 
+
+	//judge0 callback req
+	e.PUT("/judge0callback", controllers.Judge0Callback)
+
+	//for now all routes in same place, separate them later
+	e.POST("/submit", controllers.SubmitCode)
+	e.GET("/result/:submission_id", controllers.GetResult)
+	//e.GET("/runcode", controllers.RunCode)
+	//e.GET("/runcustom", controllers.RunCustom)
+
 	questionController := controllers.NewQuestionController(db.New(db.DBPool))
 	questionRoutes := e.Group("/question", middlewares.JWTAuth)
 	// Add BanCheckUser to this group when the shared authorization middleware lands.

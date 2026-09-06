@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"github.com/jackc/pgx/v5"
@@ -12,7 +13,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var DBPool *pgxpool.Pool
+var (
+
+	DBPool *pgxpool.Pool
+	Queries *sqlc.Queries
+)
 
 type DBTX interface {
 	Exec(context.Context, string, ...interface{}) (pgconn.CommandTag, error)
@@ -60,6 +65,8 @@ func InitDB() {
 		logging.Fatalf("Failed to ping database: %v", err)
 	}
 
+	Queries = sqlc.New(DBPool)
+	
 	logging.Infof("Database connection pool initialized successfully")
 }
 

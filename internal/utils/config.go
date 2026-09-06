@@ -9,6 +9,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
+//please remove unnecessary
 type cfg struct {
 	JWTSecret          string `env:"JWT_SECRET,notEmpty"`
 	FrontendURL        string `env:"FRONTEND_URL" envDefault:"http://localhost:3000"`
@@ -39,6 +40,11 @@ type cfg struct {
 	RedisHost         string `env:"REDIS_HOST" envDefault:"127.0.0.1"`
 	RedisPort         string `env:"REDIS_PORT" envDefault:"6379"`
 	RedisPassword     string `env:"REDIS_PASSWORD"`
+
+	CallbackURL string `env:"CALLBACK_URL"`
+	Judge0URI string `env:"JUDGE0_URI"`
+
+
 }
 
 var Config cfg
