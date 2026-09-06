@@ -21,7 +21,9 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	c.Validate(req)
+	if err := c.Validate(&req); err != nil {
+    return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+}
 
 	//get user id here
 	//userID := 
