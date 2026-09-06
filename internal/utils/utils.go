@@ -14,5 +14,4 @@ func GetExecutionTimeMultiplier(languageID int) float64 {
 		return 0
 	}
 
-
 }

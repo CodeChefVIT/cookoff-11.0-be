@@ -5,5 +5,5 @@ import (
 )
 
 func Judge0Callback(c echo.Context) error {
-	return nil//or maybe ok?
+	return nil //or maybe ok?
 }

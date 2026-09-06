@@ -7,26 +7,83 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
+	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/labstack/echo/v4"
 )
 
 type questionQuerierStub struct {
-	getQuestion       db.GetQuestionByIDRow
+	getQuestion       sqlc.GetQuestionByIDRow
 	getQuestionErr    error
 	getVisualErr      error
-	listQuestions     []db.ListQuestionsByRoundRow
+	listQuestions     []sqlc.ListQuestionsByRoundRow
 	listQuestionsErr  error
-	listBlocks        []db.VisualBlock
+	listBlocks        []sqlc.VisualBlock
 	listBlocksErr     error
 	requestedRound    int32
 	requestedQuestion uuid.UUID
 	blocksRequested   bool
 }
 
-func (s *questionQuerierStub) GetQuestionByID(_ context.Context, id uuid.UUID) (db.GetQuestionByIDRow, error) {
+func (s *questionQuerierStub) CreateAttempt(_ context.Context, _ sqlc.CreateAttemptParams) (sqlc.Attempt, error) {
+	return sqlc.Attempt{}, nil
+}
+
+func (s *questionQuerierStub) CreateSubmission(_ context.Context, _ sqlc.CreateSubmissionParams) error {
+	return nil
+}
+
+func (s *questionQuerierStub) CreateTestCase(_ context.Context, _ sqlc.CreateTestCaseParams) (sqlc.Testcase, error) {
+	return sqlc.Testcase{}, nil
+}
+
+func (s *questionQuerierStub) CreateVisualSubmission(_ context.Context, _ sqlc.CreateVisualSubmissionParams) (sqlc.Submission, error) {
+	return sqlc.Submission{}, nil
+}
+
+func (s *questionQuerierStub) GetAllTestCasesByQuestion(_ context.Context, _ uuid.UUID) ([]sqlc.GetAllTestCasesByQuestionRow, error) {
+	return nil, nil
+}
+
+func (s *questionQuerierStub) GetAttemptForUpdate(_ context.Context, _ sqlc.GetAttemptForUpdateParams) (sqlc.Attempt, error) {
+	return sqlc.Attempt{}, nil
+}
+
+func (s *questionQuerierStub) GetQuestionBuyIn(_ context.Context, _ uuid.UUID) (pgtype.Numeric, error) {
+	return pgtype.Numeric{}, nil
+}
+
+func (s *questionQuerierStub) GetQuestionReward(_ context.Context, _ uuid.UUID) (pgtype.Numeric, error) {
+	return pgtype.Numeric{}, nil
+}
+
+func (s *questionQuerierStub) GetUserBalanceForUpdate(_ context.Context, _ uuid.UUID) (pgtype.Numeric, error) {
+	return pgtype.Numeric{}, nil
+}
+
+func (s *questionQuerierStub) GetUserScoreForUpdate(_ context.Context, _ uuid.UUID) (pgtype.Numeric, error) {
+	return pgtype.Numeric{}, nil
+}
+
+func (s *questionQuerierStub) ListVisualSolutionsByQuestionID(_ context.Context, _ uuid.UUID) ([]sqlc.VisualSolution, error) {
+	return nil, nil
+}
+
+func (s *questionQuerierStub) UpdateAttemptStatus(_ context.Context, _ sqlc.UpdateAttemptStatusParams) error {
+	return nil
+}
+
+func (s *questionQuerierStub) UpdateUserBalance(_ context.Context, _ sqlc.UpdateUserBalanceParams) error {
+	return nil
+}
+
+func (s *questionQuerierStub) UpdateUserScore(_ context.Context, _ sqlc.UpdateUserScoreParams) error {
+	return nil
+}
+
+func (s *questionQuerierStub) GetQuestionByID(_ context.Context, id uuid.UUID) (sqlc.GetQuestionByIDRow, error) {
 	s.requestedQuestion = id
 	return s.getQuestion, s.getQuestionErr
 }
@@ -36,19 +93,19 @@ func (s *questionQuerierStub) GetRoundOneVisualQuestion(_ context.Context, id uu
 	return id, s.getVisualErr
 }
 
-func (s *questionQuerierStub) ListQuestionsByRound(_ context.Context, round int32) ([]db.ListQuestionsByRoundRow, error) {
+func (s *questionQuerierStub) ListQuestionsByRound(_ context.Context, round int32) ([]sqlc.ListQuestionsByRoundRow, error) {
 	s.requestedRound = round
 	return s.listQuestions, s.listQuestionsErr
 }
 
-func (s *questionQuerierStub) ListVisualBlocksByQuestionID(_ context.Context, _ uuid.UUID) ([]db.VisualBlock, error) {
+func (s *questionQuerierStub) ListVisualBlocksByQuestionID(_ context.Context, _ uuid.UUID) ([]sqlc.VisualBlock, error) {
 	s.blocksRequested = true
 	return s.listBlocks, s.listBlocksErr
 }
 
 func TestListByRoundReturnsOnlyRequestedRound(t *testing.T) {
 	questionID := uuid.New()
-	stub := &questionQuerierStub{listQuestions: []db.ListQuestionsByRoundRow{{
+	stub := &questionQuerierStub{listQuestions: []sqlc.ListQuestionsByRoundRow{{
 		ID: questionID, Title: "Visual Logic", QType: "visual", Round: 1, BuyIn: "10", Reward: "20",
 	}}}
 
@@ -77,7 +134,7 @@ func TestListByRoundReturnsOnlyRequestedRound(t *testing.T) {
 
 func TestGetByIDDoesNotExposeVisualSolutions(t *testing.T) {
 	questionID := uuid.New()
-	stub := &questionQuerierStub{getQuestion: db.GetQuestionByIDRow{
+	stub := &questionQuerierStub{getQuestion: sqlc.GetQuestionByIDRow{
 		ID: questionID, Title: "Visual Logic", QType: "visual", Round: 1, BuyIn: "10", Reward: "20",
 	}}
 
@@ -140,7 +197,7 @@ func TestListBlocksRejectsInvalidOrNonVisualQuestions(t *testing.T) {
 
 func TestListBlocksReturnsVisualPalette(t *testing.T) {
 	questionID := uuid.New()
-	stub := &questionQuerierStub{listBlocks: []db.VisualBlock{{ID: uuid.New(), QuestionID: questionID, Content: "move 10 steps"}}}
+	stub := &questionQuerierStub{listBlocks: []sqlc.VisualBlock{{ID: uuid.New(), QuestionID: questionID, Content: "move 10 steps"}}}
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/question/"+questionID.String()+"/blocks", nil)
 	res := httptest.NewRecorder()
@@ -172,4 +229,4 @@ func TestGetByIDReturnsNotFound(t *testing.T) {
 	}
 }
 
-var _ db.Querier = (*questionQuerierStub)(nil)
+var _ sqlc.Querier = (*questionQuerierStub)(nil)
