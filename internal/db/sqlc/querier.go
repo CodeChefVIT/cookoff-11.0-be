@@ -23,6 +23,7 @@ type Querier interface {
 	GetQuestionByID(ctx context.Context, id uuid.UUID) (GetQuestionByIDRow, error)
 	GetQuestionReward(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
 	GetRoundOneVisualQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submission, error)
 	GetSubmissionResults(ctx context.Context, submissionID uuid.UUID) ([]SubmissionResult, error)
 	GetUserBalanceForUpdate(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
 	GetUserScoreForUpdate(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
