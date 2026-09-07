@@ -77,8 +77,6 @@ func DeleteToken(ctx context.Context, token, submissionID string) error {
 	return nil
 }
 
-
-
 // DeleteTokenAndCount removes a token AND reads how many tokens remain in
 // the submission's outstanding-token set, as a single Redis MULTI/EXEC
 // transaction (via TxPipeline). This is the fix for a real race condition:
@@ -110,7 +108,6 @@ func DeleteTokenAndCount(ctx context.Context, token, submissionID string) (int64
 func RestoreToken(ctx context.Context, token, submissionID, testcaseID string) error {
 	return CacheToken(ctx, token, submissionID, testcaseID)
 }
-
 
 func GetTokenCount(ctx context.Context, submissionID string) (int64, error) {
 	count, err := TokenCache.SCard(ctx, submissionTokensKey(submissionID)).Result()
