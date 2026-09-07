@@ -30,7 +30,7 @@ func CreateSubmissionPayload(sourceCode string, languageID int, testCases []sqlc
 
 	callbackURL := utils.Config.CallbackURL
 	if callbackURL == "" {
-		return nil, errors.New("Environment Variable CALLBACK_URL not set")
+		return nil, errors.New("environment variable CALLBACK_URL not set")
 	}
 
 	for i, testcase := range testCases {
@@ -42,7 +42,7 @@ func CreateSubmissionPayload(sourceCode string, languageID int, testCases []sqlc
 		//could do this in the controller as well (preferred)
 		execution_timeout := execution_timeout_t.Float64 * utils.GetExecutionTimeMultiplier(languageID)
 		if execution_timeout == 0 {
-			return nil, errors.New("Invalid languageID or execution_timeout")
+			return nil, errors.New("invalid languageID or execution_timeout")
 		}
 
 		submissions[i] = judge0Submission{
@@ -57,7 +57,7 @@ func CreateSubmissionPayload(sourceCode string, languageID int, testCases []sqlc
 
 	payload, err := json.Marshal(submissions)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to marshal the payload: %v", err)
+		return nil, fmt.Errorf("failed to marshal the payload: %w", err)
 	}
 
 	return payload, nil
@@ -67,7 +67,7 @@ func CreateSubmissionPayload(sourceCode string, languageID int, testCases []sqlc
 func SendSubmissionPayload(client *http.Client, payload []byte) (*http.Response, error) {
 	baseURI := utils.Config.Judge0URI
 	if baseURI == "" {
-		return nil, errors.New("Environment Variable JUDGE0_URI not set")
+		return nil, errors.New("environment variable JUDGE0_URI not set")
 	}
 
 	params := url.Values{}
@@ -77,7 +77,7 @@ func SendSubmissionPayload(client *http.Client, payload []byte) (*http.Response,
 
 	req, err := http.NewRequest("POST", finalURI, bytes.NewReader(payload))
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create http request")
+		return nil, fmt.Errorf("failed to create http request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -85,7 +85,7 @@ func SendSubmissionPayload(client *http.Client, payload []byte) (*http.Response,
 	resp, err := client.Do(req)
 
 	if err != nil {
-		return nil, fmt.Errorf("Failed to send submission payload to judge0")
+		return nil, fmt.Errorf("failed to send submission payload to judge0: %w", err)
 	}
 
 	return resp, nil

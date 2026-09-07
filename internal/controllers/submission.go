@@ -61,7 +61,7 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failure at Judge0"})
@@ -90,9 +90,7 @@ func SubmitCode(c echo.Context) error {
 		ID:         submissionID,
 		QuestionID: questionID,
 		SourceCode: req.SourceCode,
-		LanguageID: int32(req.LanguageID),
-		//UserID: userID,
-		//anything else if required
+		LanguageID: int32(req.LanguageID), // #nosec G115
 	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create submission in database"})

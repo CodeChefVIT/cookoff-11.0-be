@@ -97,7 +97,7 @@ func (c *AttemptController) createAttempt(
 		return nil, err
 	}
 
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := c.queries.WithTx(tx)
 

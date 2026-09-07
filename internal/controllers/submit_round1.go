@@ -106,7 +106,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 		return 0, err
 	}
 
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := c.queries.WithTx(tx)
 

@@ -84,13 +84,13 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 	}
 
 	var testcaseID pgtype.UUID
-	if parsed, err := uuid.Parse(testcaseIDStr); err == nil {
+	if parsed, parseErr := uuid.Parse(testcaseIDStr); parseErr == nil {
 		testcaseID = pgtype.UUID{Bytes: parsed, Valid: true}
 	} else {
 		// Don't silently drop this -- a malformed cached testcase id means
 		// something upstream (CacheToken's caller) wrote a bad value.
 		logging.Warnf("submission %s: cached testcase id %q is not a valid UUID, storing result with no testcase link: %v",
-			submissionID, testcaseIDStr, err)
+			submissionID, testcaseIDStr, parseErr)
 	}
 
 	status := mapJudge0Status(payload.Status.ID)
@@ -134,7 +134,7 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 	qtx := db.Queries.WithTx(tx)
 
 	// Step 2: record per-testcase result in Postgres.
-	if _, err := qtx.CreateSubmissionResult(ctx, sqlc.CreateSubmissionResultParams{
+	if _, createErr := qtx.CreateSubmissionResult(ctx, sqlc.CreateSubmissionResultParams{
 		ID:            resultID,
 		TestcaseID:    testcaseID,
 		SubmissionID:  submissionID,
@@ -143,14 +143,14 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 		PointsAwarded: pointsAwarded,
 		Status:        status,
 		Description:   &description,
-	}); err != nil {
-		tx.Rollback(ctx)
-		return fmt.Errorf("create submission result: %w", err)
+	}); createErr != nil {
+		_ = tx.Rollback(ctx)
+		return fmt.Errorf("create submission result: %w", createErr)
 	}
 
 	// Commit DB write before removing token from Redis for read visibility
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit result tx: %w", err)
+	if commitErr := tx.Commit(ctx); commitErr != nil {
+		return fmt.Errorf("commit result tx: %w", commitErr)
 	}
 
 	// Step 3: remove token from outstanding set
@@ -170,7 +170,7 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 	if err != nil {
 		return fmt.Errorf("begin final tx: %w", err)
 	}
-	defer finalTx.Rollback(ctx)
+	defer func() { _ = finalTx.Rollback(ctx) }()
 	finalQtx := db.Queries.WithTx(finalTx)
 
 	if err := finalizeSubmission(ctx, finalQtx, submissionID); err != nil {
@@ -181,16 +181,6 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 		return fmt.Errorf("commit final tx: %w", err)
 	}
 	return nil
-}
-
-// restoreTokenOrLog is the best-effort compensation for dual-write gaps.
-func restoreTokenOrLog(ctx context.Context, submissionID uuid.UUID, token, submissionIDStr, testcaseIDStr, stage string, causeErr error) {
-	if restoreErr := utils.RestoreToken(ctx, token, submissionIDStr, testcaseIDStr); restoreErr != nil {
-		logging.Errorf(
-			"submission %s: %s failed AND restoring token %q failed -- manual fix needed (%s error: %v, restore error: %v)",
-			submissionID, stage, token, stage, causeErr, restoreErr,
-		)
-	}
 }
 
 // finalizeSubmission runs once per submission, exactly when the last
@@ -216,19 +206,19 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 				overallStatus = r.Status
 			}
 		}
-		if rt, err := utils.NumericToFloat64(r.Runtime); err == nil {
+		if rt, rtErr := utils.NumericToFloat64(r.Runtime); rtErr == nil {
 			if rt > maxRuntime {
 				maxRuntime = rt
 			}
 		} else {
-			logging.Warnf("submission %s: could not read runtime for result %s: %v", submissionID, r.ID, err)
+			logging.Warnf("submission %s: could not read runtime for result %s: %v", submissionID, r.ID, rtErr)
 		}
-		if mem, err := utils.NumericToFloat64(r.Memory); err == nil {
+		if mem, memErr := utils.NumericToFloat64(r.Memory); memErr == nil {
 			if mem > maxMemory {
 				maxMemory = mem
 			}
 		} else {
-			logging.Warnf("submission %s: could not read memory for result %s: %v", submissionID, r.ID, err)
+			logging.Warnf("submission %s: could not read memory for result %s: %v", submissionID, r.ID, memErr)
 		}
 	}
 
@@ -248,7 +238,7 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		overallDesc = fmt.Sprintf("All %d testcases passed", passed)
 	}
 
-	if err := qtx.UpdateSubmissionStatus(ctx, sqlc.UpdateSubmissionStatusParams{
+	if updateErr := qtx.UpdateSubmissionStatus(ctx, sqlc.UpdateSubmissionStatusParams{
 		ID:              submissionID,
 		TestcasesPassed: &passed,
 		TestcasesFailed: &failed,
@@ -256,8 +246,8 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		Memory:          memoryNumeric,
 		Status:          &overallStatus,
 		Description:     &overallDesc,
-	}); err != nil {
-		return fmt.Errorf("update submission status: %w", err)
+	}); updateErr != nil {
+		return fmt.Errorf("update submission status: %w", updateErr)
 	}
 
 	if failed > 0 {
@@ -312,11 +302,11 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	if err != nil {
 		return fmt.Errorf("convert new score: %w", err)
 	}
-	if err := qtx.UpdateUserScore(ctx, sqlc.UpdateUserScoreParams{
+	if updateScoreErr := qtx.UpdateUserScore(ctx, sqlc.UpdateUserScoreParams{
 		ID:    submission.UserID,
 		Score: newScoreNumeric,
-	}); err != nil {
-		return fmt.Errorf("update user score: %w", err)
+	}); updateScoreErr != nil {
+		return fmt.Errorf("update user score: %w", updateScoreErr)
 	}
 
 	balanceNumeric, err := qtx.GetUserBalanceForUpdate(ctx, submission.UserID)

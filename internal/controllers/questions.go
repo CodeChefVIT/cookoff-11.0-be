@@ -62,9 +62,9 @@ func (qc *QuestionController) ListBlocks(c echo.Context) error {
 		return questionError(c, http.StatusBadRequest, "invalid question ID")
 	}
 
-	if _, err := qc.queries.GetRoundOneVisualQuestion(c.Request().Context(), questionID); errors.Is(err, pgx.ErrNoRows) {
+	if _, getErr := qc.queries.GetRoundOneVisualQuestion(c.Request().Context(), questionID); errors.Is(getErr, pgx.ErrNoRows) {
 		return questionError(c, http.StatusNotFound, "Round 1 visual question not found")
-	} else if err != nil {
+	} else if getErr != nil {
 		return questionError(c, http.StatusInternalServerError, "failed to verify question")
 	}
 

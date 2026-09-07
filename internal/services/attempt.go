@@ -37,7 +37,7 @@ func (s *AttemptService) CreateAttempt(
 		return err
 	}
 
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := s.queries.WithTx(tx)
 
