@@ -124,16 +124,18 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 		description = description + ": " + *payload.Message
 	}
 
+	// Generate deterministic ID for result to ensure idempotency on retries
+	resultID := uuid.NewSHA1(uuid.NameSpaceURL, []byte(payload.Token))
+
 	tx, err := db.DBPool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
 	qtx := db.Queries.WithTx(tx)
 
-	// Step 2: record this single testcase's result.
+	// Step 2: record per-testcase result in Postgres.
 	if _, err := qtx.CreateSubmissionResult(ctx, sqlc.CreateSubmissionResultParams{
-		ID:            uuid.New(),
+		ID:            resultID,
 		TestcaseID:    testcaseID,
 		SubmissionID:  submissionID,
 		Runtime:       runtimeNumeric,
@@ -142,61 +144,46 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 		Status:        status,
 		Description:   &description,
 	}); err != nil {
+		tx.Rollback(ctx)
 		return fmt.Errorf("create submission result: %w", err)
 	}
 
-	// Step 3: this token is now resolved -- remove it from the outstanding
-	// set for this submission (the fan-out/fan-in counter from HLD 1.5).
-	//
-	// DeleteTokenAndCount does the removal AND the remaining-count check as
-	// one atomic Redis operation. That matters: if these were two separate
-	// calls, two workers finishing the last two testcases of the same
-	// submission at nearly the same moment could each remove their own
-	// token and then BOTH see the set as empty, so both would try to
-	// finalize the same submission at once. Doing it atomically guarantees
-	// only one worker ever observes remaining == 0.
+	// Commit DB write before removing token from Redis for read visibility
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit result tx: %w", err)
+	}
+
+	// Step 3: remove token from outstanding set
 	remaining, err := utils.DeleteTokenAndCount(ctx, payload.Token, submissionIDStr)
 	if err != nil {
 		return fmt.Errorf("delete token: %w", err)
 	}
 
 	if remaining > 0 {
-		// Other testcases for this submission are still pending -- nothing
-		// more to do until the last one calls back.
-		if err := tx.Commit(ctx); err != nil {
-			// The token was already removed from Redis above, but the DB
-			// write that was supposed to go with it just failed to commit.
-			// Put the token back so the fan-in counter isn't left one short
-			// -- otherwise this submission would wait forever for a token
-			// that is never coming back.
-			restoreTokenOrLog(ctx, submissionID, payload.Token, submissionIDStr, testcaseIDStr, "commit", err)
-			return fmt.Errorf("commit tx: %w", err)
-		}
+		// Other testcases for this submission are still pending.
 		return nil
 	}
 
 	// Step 4: this was the last outstanding testcase. Aggregate every
-	// submission_results row into the parent submissions row, and (if every
-	// testcase passed) award balance/score once, mirroring the Round-1
-	// visual-submission flow in controllers/submit_round1.go.
-	if err := finalizeSubmission(ctx, qtx, submissionID); err != nil {
-		restoreTokenOrLog(ctx, submissionID, payload.Token, submissionIDStr, testcaseIDStr, "finalize", err)
+	// submission_results row into the parent submissions row in a dedicated final transaction.
+	finalTx, err := db.DBPool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin final tx: %w", err)
+	}
+	defer finalTx.Rollback(ctx)
+	finalQtx := db.Queries.WithTx(finalTx)
+
+	if err := finalizeSubmission(ctx, finalQtx, submissionID); err != nil {
 		return fmt.Errorf("finalize submission: %w", err)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		restoreTokenOrLog(ctx, submissionID, payload.Token, submissionIDStr, testcaseIDStr, "commit", err)
-		return fmt.Errorf("commit tx: %w", err)
+	if err := finalTx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit final tx: %w", err)
 	}
 	return nil
 }
 
-// restoreTokenOrLog is the best-effort compensation for the one remaining
-// dual-write gap: Redis and Postgres can't be rolled back together, so if
-// the DB side fails AFTER the token was already deleted from Redis, we try
-// to put it back. If even that fails, there's nothing left to do
-// automatically -- log loudly so it can be fixed by hand (re-add the token
-// for this submission, or ask the judge to re-run it).
+// restoreTokenOrLog is the best-effort compensation for dual-write gaps.
 func restoreTokenOrLog(ctx context.Context, submissionID uuid.UUID, token, submissionIDStr, testcaseIDStr, stage string, causeErr error) {
 	if restoreErr := utils.RestoreToken(ctx, token, submissionIDStr, testcaseIDStr); restoreErr != nil {
 		logging.Errorf(
@@ -207,21 +194,13 @@ func restoreTokenOrLog(ctx context.Context, submissionID uuid.UUID, token, submi
 }
 
 // finalizeSubmission runs once per submission, exactly when the last
-// testcase's callback arrives (tracked via the Redis token set). It must run
-// inside the same transaction as the triggering CreateSubmissionResult call
-// so a crash between "write result" and "aggregate" can't leave the
-// submission stuck half-updated.
+// testcase's callback arrives.
 func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uuid.UUID) error {
 	results, err := qtx.GetSubmissionResults(ctx, submissionID)
 	if err != nil {
 		return fmt.Errorf("get submission results: %w", err)
 	}
 	if len(results) == 0 {
-		// This should be impossible by the time the fan-in counter hits
-		// zero. If it ever happens, something upstream is broken (e.g. a
-		// read-committed visibility gap between two racing workers) -- fail
-		// loudly instead of silently rewarding a submission with nothing
-		// actually graded.
 		return fmt.Errorf("no submission results found for submission %s", submissionID)
 	}
 
@@ -234,21 +213,19 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		} else {
 			failed++
 			if overallStatus == "success" {
-				// First failing testcase's status becomes the submission's
-				// overall status (e.g. "wrong answer", "Time Limit Exceeded").
 				overallStatus = r.Status
 			}
 		}
 		if rt, err := utils.NumericToFloat64(r.Runtime); err == nil {
 			if rt > maxRuntime {
-				maxRuntime = rt // worst-case runtime across testcases
+				maxRuntime = rt
 			}
 		} else {
 			logging.Warnf("submission %s: could not read runtime for result %s: %v", submissionID, r.ID, err)
 		}
 		if mem, err := utils.NumericToFloat64(r.Memory); err == nil {
 			if mem > maxMemory {
-				maxMemory = mem // peak memory across testcases (same aggregation as runtime, not a sum)
+				maxMemory = mem
 			}
 		} else {
 			logging.Warnf("submission %s: could not read memory for result %s: %v", submissionID, r.ID, err)
@@ -264,6 +241,13 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		return fmt.Errorf("convert aggregate memory: %w", err)
 	}
 
+	var overallDesc string
+	if failed > 0 {
+		overallDesc = fmt.Sprintf("%d/%d testcases passed (%s)", passed, passed+failed, overallStatus)
+	} else {
+		overallDesc = fmt.Sprintf("All %d testcases passed", passed)
+	}
+
 	if err := qtx.UpdateSubmissionStatus(ctx, sqlc.UpdateSubmissionStatusParams{
 		ID:              submissionID,
 		TestcasesPassed: &passed,
@@ -271,7 +255,7 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		Runtime:         runtimeNumeric,
 		Memory:          memoryNumeric,
 		Status:          &overallStatus,
-		Description:     nil,
+		Description:     &overallDesc,
 	}); err != nil {
 		return fmt.Errorf("update submission status: %w", err)
 	}
@@ -291,9 +275,6 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			// No attempt row for this user/question -- nothing to award.
-			// Logged (not silent) because this is expected to be common
-			// right now if user_id isn't wired into SubmitCode yet.
 			logging.Warnf("submission %s: no attempt row for user=%s question=%s -- skipping reward",
 				submissionID, submission.UserID, submission.QuestionID)
 			return nil
@@ -301,7 +282,6 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		return fmt.Errorf("get attempt: %w", err)
 	}
 	if attempt.Status == "answered" {
-		// Already rewarded once; a re-judged callback can't double-pay.
 		logging.Infof("submission %s: attempt already answered, skipping duplicate reward", submissionID)
 		return nil
 	}
@@ -316,7 +296,27 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	}
 	reward, err := utils.NumericToFloat64(rewardNumeric)
 	if err != nil {
-		reward = 0 // reward is nullable on some questions; treat unset as 0
+		reward = 0
+	}
+
+	// Lock score before balance to prevent deadlocks
+	scoreNumeric, err := qtx.GetUserScoreForUpdate(ctx, submission.UserID)
+	if err != nil {
+		return fmt.Errorf("get user score: %w", err)
+	}
+	score, err := utils.NumericToFloat64(scoreNumeric)
+	if err != nil {
+		return fmt.Errorf("convert score: %w", err)
+	}
+	newScoreNumeric, err := utils.Float64ToNumeric(score + float64(question.Points))
+	if err != nil {
+		return fmt.Errorf("convert new score: %w", err)
+	}
+	if err := qtx.UpdateUserScore(ctx, sqlc.UpdateUserScoreParams{
+		ID:    submission.UserID,
+		Score: newScoreNumeric,
+	}); err != nil {
+		return fmt.Errorf("update user score: %w", err)
 	}
 
 	balanceNumeric, err := qtx.GetUserBalanceForUpdate(ctx, submission.UserID)
@@ -336,25 +336,6 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		Balance: newBalanceNumeric,
 	}); err != nil {
 		return fmt.Errorf("update user balance: %w", err)
-	}
-
-	scoreNumeric, err := qtx.GetUserScoreForUpdate(ctx, submission.UserID)
-	if err != nil {
-		return fmt.Errorf("get user score: %w", err)
-	}
-	score, err := utils.NumericToFloat64(scoreNumeric)
-	if err != nil {
-		return fmt.Errorf("convert score: %w", err)
-	}
-	newScoreNumeric, err := utils.Float64ToNumeric(score + float64(question.Points))
-	if err != nil {
-		return fmt.Errorf("convert new score: %w", err)
-	}
-	if err := qtx.UpdateUserScore(ctx, sqlc.UpdateUserScoreParams{
-		ID:    submission.UserID,
-		Score: newScoreNumeric,
-	}); err != nil {
-		return fmt.Errorf("update user score: %w", err)
 	}
 
 	if err := qtx.UpdateAttemptStatus(ctx, sqlc.UpdateAttemptStatusParams{
