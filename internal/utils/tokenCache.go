@@ -77,6 +77,41 @@ func DeleteToken(ctx context.Context, token, submissionID string) error {
 	return nil
 }
 
+
+
+// DeleteTokenAndCount removes a token AND reads how many tokens remain in
+// the submission's outstanding-token set, as a single Redis MULTI/EXEC
+// transaction (via TxPipeline). This is the fix for a real race condition:
+// if "delete" and "count" were two separate Redis round trips (as they used
+// to be), two workers finishing the last two testcases of the same
+// submission at nearly the same instant could each delete their own token
+// and THEN both read the set as empty -- both would believe they are "the
+// last callback" and both would try to finalize the submission at once.
+// Wrapping delete+count in one MULTI/EXEC block means no other client's
+// command can be interleaved between them, so only the worker that
+// genuinely empties the set will ever see remaining == 0.
+func DeleteTokenAndCount(ctx context.Context, token, submissionID string) (int64, error) {
+	pipe := TokenCache.TxPipeline()
+	pipe.Del(ctx, tokenKey(token))
+	pipe.SRem(ctx, submissionTokensKey(submissionID), token)
+	countCmd := pipe.SCard(ctx, submissionTokensKey(submissionID))
+	if _, err := pipe.Exec(ctx); err != nil {
+		return 0, fmt.Errorf("failed to delete token %q: %w", token, err)
+	}
+	return countCmd.Val(), nil
+}
+
+// RestoreToken re-adds a token that DeleteTokenAndCount already removed, for
+// use when the Postgres side of a callback fails AFTER the token was
+// removed from Redis. Without this compensating write, a failed DB commit
+// would permanently shrink the fan-in counter by one and the affected
+// submission could get stuck "pending" forever, waiting for a token that
+// will never call back again.
+func RestoreToken(ctx context.Context, token, submissionID, testcaseID string) error {
+	return CacheToken(ctx, token, submissionID, testcaseID)
+}
+
+
 func GetTokenCount(ctx context.Context, submissionID string) (int64, error) {
 	count, err := TokenCache.SCard(ctx, submissionTokensKey(submissionID)).Result()
 	if err != nil {
