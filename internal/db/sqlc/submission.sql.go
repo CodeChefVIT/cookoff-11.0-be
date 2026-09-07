@@ -63,3 +63,28 @@ func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionPara
 	)
 	return err
 }
+
+const getSubmissionByID = `-- name: GetSubmissionByID :one
+SELECT id, question_id, testcases_passed, testcases_failed, runtime, submission_time, source_code, language_id, description, memory, user_id, status FROM submissions
+WHERE id = $1
+`
+
+func (q *Queries) GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submission, error) {
+	row := q.db.QueryRow(ctx, getSubmissionByID, id)
+	var i Submission
+	err := row.Scan(
+		&i.ID,
+		&i.QuestionID,
+		&i.TestcasesPassed,
+		&i.TestcasesFailed,
+		&i.Runtime,
+		&i.SubmissionTime,
+		&i.SourceCode,
+		&i.LanguageID,
+		&i.Description,
+		&i.Memory,
+		&i.UserID,
+		&i.Status,
+	)
+	return i, err
+}

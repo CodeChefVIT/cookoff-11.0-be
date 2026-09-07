@@ -15,3 +15,7 @@ INSERT INTO submissions (
 ) VALUES (
 	$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
 );
+
+-- name: GetSubmissionByID :one
+SELECT * FROM submissions
+WHERE id = $1;
