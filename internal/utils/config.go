@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/joho/godotenv"
@@ -11,15 +12,17 @@ import (
 
 // please remove unnecessary
 type cfg struct {
-	JWTSecret          string `env:"JWT_SECRET,notEmpty"`
-	FrontendURL        string `env:"FRONTEND_URL" envDefault:"http://localhost:3000"`
-	AdminURL           string `env:"ADMIN_URL" envDefault:"http://localhost:3067"`
-	BackendURL         string `env:"BACKEND_URL" envDefault:"http://localhost:8080"`
-	CookieDomain       string `env:"COOKIE_DOMAIN"`
-	Env                string `env:"ENV" envDefault:"development"`
-	GoogleRedirectURI  string `env:"GOOGLE_REDIRECT_URI"`
-	GoogleClientID     string `env:"GOOGLE_CLIENT_ID"`
-	GoogleClientSecret string `env:"GOOGLE_CLIENT_SECRET"`
+	JWTSecret          string        `env:"JWT_SECRET,notEmpty"`
+	FrontendURL        string        `env:"FRONTEND_URL" envDefault:"http://localhost:3000"`
+	AdminURL           string        `env:"ADMIN_URL" envDefault:"http://localhost:3067"`
+	BackendURL         string        `env:"BACKEND_URL" envDefault:"http://localhost:8080"`
+	CookieDomain       string        `env:"COOKIE_DOMAIN"`
+	Env                string        `env:"ENV" envDefault:"development"`
+	GoogleRedirectURI  string        `env:"GOOGLE_REDIRECT_URI"`
+	GoogleClientID     string        `env:"GOOGLE_CLIENT_ID"`
+	GoogleClientSecret string        `env:"GOOGLE_CLIENT_SECRET"`
+	AccessTokenTTL     time.Duration `env:"ACCESS_TOKEN_TTL" envDefault:"15m"`
+	RefreshTokenTTL    time.Duration `env:"REFRESH_TOKEN_TTL" envDefault:"48h"`
 
 	Port             string `env:"PORT" envDefault:"8080"`
 	PostgresHost     string `env:"POSTGRES_HOST,notEmpty"`
@@ -58,7 +61,15 @@ func LoadConfig() error {
 	if err := env.Parse(&Config); err != nil {
 		return fmt.Errorf("failed while trying to parse env: %+v", err)
 	}
-	fmt.Println(Config.PostgresHost)
+	if Config.JWTSecret == "" {
+		return fmt.Errorf("JWT_SECRET must not be empty")
+	}
+	if Config.GoogleRedirectURI == "" || Config.GoogleClientID == "" || Config.GoogleClientSecret == "" {
+		return fmt.Errorf("Google OAuth configuration is incomplete")
+	}
+	if Config.AccessTokenTTL <= 0 || Config.RefreshTokenTTL <= 0 {
+		return fmt.Errorf("token TTLs must be positive")
+	}
 
 	if Config.FrontendURL != "" {
 		if u, err := url.Parse(strings.TrimRight(Config.FrontendURL, "/")); err == nil {

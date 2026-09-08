@@ -13,12 +13,15 @@ import (
 
 type Querier interface {
 	CreateAttempt(ctx context.Context, arg CreateAttemptParams) (Attempt, error)
+	CreateGoogleUser(ctx context.Context, arg CreateGoogleUserParams) (User, error)
 	CreateSubmission(ctx context.Context, arg CreateSubmissionParams) error
 	CreateSubmissionResult(ctx context.Context, arg CreateSubmissionResultParams) (SubmissionResult, error)
 	CreateTestCase(ctx context.Context, arg CreateTestCaseParams) (Testcase, error)
 	CreateVisualSubmission(ctx context.Context, arg CreateVisualSubmissionParams) (Submission, error)
 	GetAllTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]GetAllTestCasesByQuestionRow, error)
 	GetAttemptForUpdate(ctx context.Context, arg GetAttemptForUpdateParams) (Attempt, error)
+	GetUserByGoogleID(ctx context.Context, googleID string) (User, error)
+	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetQuestionBuyIn(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
 	GetQuestionByID(ctx context.Context, id uuid.UUID) (GetQuestionByIDRow, error)
 	GetQuestionReward(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
