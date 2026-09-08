@@ -6,12 +6,14 @@ import (
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/submission"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 
 	"encoding/json"
-	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
 	"io"
 	"net/http"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 )
 
 // do logging
@@ -81,10 +83,25 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to decode body"})
 	}
 
-	/*
-		for i, t:= range tokens{
-			//add the token to the queue and all.....
-		}*/
+	if len(tokens) != len(testcases) {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "judge0 returned a different number of tokens than testcases submitted",
+		})
+	}
+
+	tokenToTestcase := make(map[string]string, len(tokens))
+	for i, t := range tokens {
+		if t.Token == "" {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "judge0 returned an empty token for one or more testcases",
+			})
+		}
+		tokenToTestcase[t.Token] = testcases[i].ID.String()
+	}
+
+	if err := utils.CacheTokens(ctx, submissionID.String(), tokenToTestcase); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to cache submission tokens"})
+	}
 
 	err = db.Queries.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
 		ID:         submissionID,
