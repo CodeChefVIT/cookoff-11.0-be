@@ -99,7 +99,7 @@ func SubmitCode(c echo.Context) error {
 		tokenToTestcase[t.Token] = testcases[i].ID.String()
 	}
 
-	if err := utils.CacheTokens(ctx, submissionID.String(), tokenToTestcase); err != nil {
+	if err = utils.CacheTokens(ctx, submissionID.String(), tokenToTestcase); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to cache submission tokens"})
 	}
 
