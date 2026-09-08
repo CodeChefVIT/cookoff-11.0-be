@@ -21,7 +21,7 @@ type Querier interface {
 	CreateVisualSubmission(ctx context.Context, arg CreateVisualSubmissionParams) (Submission, error)
 	DeleteQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	DeleteTestCase(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
-	GetAllTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]GetAllTestCasesByQuestionRow, error)
+	GetAllTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]Testcase, error)
 	GetAttemptForUpdate(ctx context.Context, arg GetAttemptForUpdateParams) (Attempt, error)
 	GetPublicTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]Testcase, error)
 	GetQuestionBuyIn(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)

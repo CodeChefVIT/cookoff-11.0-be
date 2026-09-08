@@ -9,32 +9,10 @@ import(
 	"github.com/google/uuid"
 
 	"github.com/labstack/echo/v4"
+
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 )
-
-
-
-
-
-type testcaseResult struct{
-	ID string `json:"id"`
-	Runtime float64 `json:"runtime"`
-	Memory float64 `json:"memory"`
-	Status string `json:"status"`
-	Description string `json:"description"`
-}
-
-type resultResp struct{
-	ID string `json:"id"`
-	QuestionID string `json:"question_id"`
-	Passed int `json:"passed"`
-	Failed int `json:"failed"`
-	Runtime float64 `json:"runtime"`
-	Memory float64 `json:"memory"`
-	SubmissionTime string `json:"submission_time"`
-	Description string `json:"description"`
-	Testcases []testcaseResult `json:"testcases"`
-}
 
 
 
@@ -93,17 +71,17 @@ func checkSubmissionStatus(ctx context.Context, submissionID uuid.UUID) (bool, e
 
 
 
-func getSubmissionResult(ctx context.Context, submissionID uuid.UUID) (resultResp, error){
+func getSubmissionResult(ctx context.Context, submissionID uuid.UUID) (dto.ResultResponse, error){
 	results, err := db.Queries.GetSubmissionResults(ctx, submissionID)
 	if err!=nil{
-		return resultResp{}, errors.New("failed to get submission result from database")
+		return dto.ResultResponse{}, errors.New("failed to get submission result from database")
 	}
 	submission, err := db.Queries.GetSubmissionByID(ctx, submissionID)
 	if err!=nil{
-		return resultResp{}, errors.New("failed to get submission from database")
+		return dto.ResultResponse{}, errors.New("failed to get submission from database")
 	}
 
-	testcases:=make([]testcaseResult, len(results))
+	testcases:=make([]dto.TestcaseResult, len(results))
 
 	for i, result := range results{
 		runtime, _ := result.Runtime.Float64Value()
@@ -120,7 +98,7 @@ func getSubmissionResult(ctx context.Context, submissionID uuid.UUID) (resultRes
 		}
 
 
-		testcases[i]=testcaseResult{
+		testcases[i]=dto.TestcaseResult{
 			ID: resultID,
 			Runtime: runtime.Float64,
 			Memory: memory.Float64,
@@ -138,7 +116,7 @@ func getSubmissionResult(ctx context.Context, submissionID uuid.UUID) (resultRes
 		description = *submission.Description
 	}
 
-	return resultResp{
+	return dto.ResultResponse{
 		ID: submissionID.String(),
 		QuestionID: submission.QuestionID.String(),
 		Passed: int(*submission.TestcasesPassed),
