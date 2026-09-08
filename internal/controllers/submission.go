@@ -52,6 +52,10 @@ func SubmitCode(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	//zero testcase validation
+	if len(testcases) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "No testcases found for the question"})
+	}
 
 	//make payload
 	payload, err := submission.CreateSubmissionPayload(req.SourceCode, req.LanguageID, testcases)
