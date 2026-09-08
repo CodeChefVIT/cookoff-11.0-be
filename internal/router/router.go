@@ -37,7 +37,7 @@ func RegisterRoutes(e *echo.Echo) {
 	RegisterVisualSubmissionRoutes(e, authenticated...)
 =======
 	e.GET("/runcode", controllers.RunCode)
-	e.GET("/runcustom", controllers.RunCode)
+	e.GET("/runcustom", controllers.RunCustom)
 
 	RegisterAttemptRoutes(e)
 	RegisterVisualSubmissionRoutes(e)
