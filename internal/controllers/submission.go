@@ -5,13 +5,15 @@ import (
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/submission"
 
 	"encoding/json"
-	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
 	"io"
 	"net/http"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 )
 
 // do logging
@@ -26,7 +28,11 @@ func SubmitCode(c echo.Context) error {
 	}
 
 	//get user id here
-	//userID :=
+	claims, ok := c.Get("user").(*middlewares.JWTClaims)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token"})
+	}
+	userID, err := uuid.Parse(claims.UserID)
 
 	//auth stuff
 	//here
@@ -87,6 +93,7 @@ func SubmitCode(c echo.Context) error {
 		}*/
 
 	err = db.Queries.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
+		UserID:     userID,
 		ID:         submissionID,
 		QuestionID: questionID,
 		SourceCode: req.SourceCode,
