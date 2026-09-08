@@ -2,10 +2,10 @@
 INSERT INTO submissions (
 	id,
 	question_id,
-	testcases_passed,
-	testcases_failed,
+	-- testcases_passed,
+	-- testcases_failed,
 	runtime,
-	submission_time,
+	-- submission_time,
 	source_code,
 	language_id,
 	description,
@@ -13,7 +13,7 @@ INSERT INTO submissions (
 	user_id,
 	status
 ) VALUES (
-	$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+	$1, $2, $3, $4, $5, $6, $7, $8, $9
 );
 
 -- name: GetSubmissionByID :one
