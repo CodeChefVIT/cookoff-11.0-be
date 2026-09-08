@@ -94,7 +94,7 @@ func checkSubmissionStatus(ctx context.Context, submissionID uuid.UUID) (bool, e
 
 
 func getSubmissionResult(ctx context.Context, submissionID uuid.UUID) (resultResp, error){
-	results, err := db.Queries.GetSubmissionResultsBySubmissionID(ctx, submissionID)
+	results, err := db.Queries.GetSubmissionResults(ctx, submissionID)
 	if err!=nil{
 		return resultResp{}, errors.New("failed to get submission result from database")
 	}

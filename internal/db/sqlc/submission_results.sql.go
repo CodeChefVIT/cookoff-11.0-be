@@ -57,13 +57,13 @@ func (q *Queries) CreateSubmissionResult(ctx context.Context, arg CreateSubmissi
 	return i, err
 }
 
-const getSubmissionResults = `-- name: GetSubmissionResults :many
+const getSubmissionResultsBySubmissionID = `-- name: GetSubmissionResultsBySubmissionID :many
 SELECT id, testcase_id, submission_id, runtime, memory, points_awarded, status, description FROM submission_results
 WHERE submission_id = $1
 `
 
-func (q *Queries) GetSubmissionResults(ctx context.Context, submissionID uuid.UUID) ([]SubmissionResult, error) {
-	rows, err := q.db.Query(ctx, getSubmissionResults, submissionID)
+func (q *Queries) GetSubmissionResultsBySubmissionID(ctx context.Context, submissionID uuid.UUID) ([]SubmissionResult, error) {
+	rows, err := q.db.Query(ctx, getSubmissionResultsBySubmissionID, submissionID)
 	if err != nil {
 		return nil, err
 	}

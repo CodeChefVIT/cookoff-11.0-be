@@ -6,7 +6,7 @@ INSERT INTO submission_results (
 )
 RETURNING *;
 
--- name: GetSubmissionResults :many
+-- name: GetSubmissionResultsBySubmissionID :many
 SELECT * FROM submission_results
 WHERE submission_id = $1;
 
