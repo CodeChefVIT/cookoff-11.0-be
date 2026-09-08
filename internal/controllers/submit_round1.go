@@ -70,7 +70,7 @@ func (c *VisualSubmissionController) SubmitVisualSolution(ctx echo.Context) erro
 		))
 	}
 
-	response, err := c.submitVisualSolution(
+	pointsAwarded, err := c.submitVisualSolution(
 		ctx.Request().Context(),
 		userID,
 		req,
@@ -89,20 +89,24 @@ func (c *VisualSubmissionController) SubmitVisualSolution(ctx echo.Context) erro
 		))
 	}
 
-	return ctx.JSON(http.StatusOK, response)
+	return ctx.JSON(http.StatusOK, dto.NewSuccessResponse(
+		"Visual solution submitted successfully", dto.SubmitVisualSolutionResponse{
+			PointsAwarded: pointsAwarded,
+		},
+	))
 }
 
 func (c *VisualSubmissionController) submitVisualSolution(
 	ctx context.Context,
 	userID uuid.UUID,
 	req dto.SubmitVisualSolutionRequest,
-) (dto.SubmitVisualSolutionResponse, error) {
+) (float64, error) {
 	tx, err := c.db.Begin(ctx)
 	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
+		return 0, err
 	}
 
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := c.queries.WithTx(tx)
 
@@ -110,9 +114,9 @@ func (c *VisualSubmissionController) submitVisualSolution(
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return dto.SubmitVisualSolutionResponse{}, echo.NewHTTPError(http.StatusNotFound, "Question doesnt exist")
+			return 0, echo.NewHTTPError(http.StatusNotFound, "Question doesnt exist")
 		}
-		return dto.SubmitVisualSolutionResponse{}, err
+		return 0, err
 	}
 
 	attempt, err := qtx.GetAttemptForUpdate(
@@ -125,13 +129,13 @@ func (c *VisualSubmissionController) submitVisualSolution(
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return dto.SubmitVisualSolutionResponse{}, echo.NewHTTPError(http.StatusForbidden, "Question not bought yet")
+			return 0, echo.NewHTTPError(http.StatusForbidden, "Question not bought yet")
 		}
-		return dto.SubmitVisualSolutionResponse{}, err
+		return 0, err
 	}
 
 	if attempt.Status == "available" {
-		return dto.SubmitVisualSolutionResponse{}, echo.NewHTTPError(http.StatusForbidden, "Question not bought yet")
+		return 0, echo.NewHTTPError(http.StatusForbidden, "Question not bought yet")
 	}
 
 	availableBlocks, err := qtx.ListVisualBlocksByQuestionID(
@@ -140,7 +144,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 	)
 
 	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
+		return 0, err
 	}
 
 	validBlocksIDs := make(map[uuid.UUID]struct{})
@@ -151,7 +155,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 
 	for _, blockID := range req.Blocks {
 		if _, exists := validBlocksIDs[blockID]; !exists {
-			return dto.SubmitVisualSolutionResponse{}, echo.NewHTTPError(http.StatusBadRequest, "Invalid block ID")
+			return 0, echo.NewHTTPError(http.StatusBadRequest, "Invalid block ID")
 		}
 	}
 
@@ -161,7 +165,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 	)
 
 	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
+		return 0, err
 	}
 
 	var (
@@ -175,7 +179,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 			isCorrect = true
 			solutionPoints, err = utils.NumericToFloat64(solution.Points)
 			if err != nil {
-				return dto.SubmitVisualSolutionResponse{}, err
+				return 0, err
 			}
 			break
 		}
@@ -184,7 +188,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 	sourceCode, err := json.Marshal(req.Blocks)
 
 	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
+		return 0, err
 	}
 
 	//updating the submisssion status
@@ -206,114 +210,94 @@ func (c *VisualSubmissionController) submitVisualSolution(
 	)
 
 	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
+		return 0, err
 	}
-	//CASE 1: Wrong answer, no points , no score , no balance updates
-	if !isCorrect {
-		if err := tx.Commit(ctx); err != nil {
-			return dto.SubmitVisualSolutionResponse{}, err
+
+	if isCorrect && attempt.Status == "bought" {
+
+		//updating the user score
+		currentScoreNumeric, err := qtx.GetUserScoreForUpdate(ctx, userID)
+		if err != nil {
+			return 0, err
 		}
-		return dto.SubmitVisualSolutionResponse{
-			Status: submissionStatus,
-			Note:   "Wrong answer, no points awarded",
-		}, nil
-	}
-	//Case 2: Correct answer, but the question has already been answered, no points , no score , no balance updates
-	if attempt.Status == "answered" {
-		if err := tx.Commit(ctx); err != nil {
-			return dto.SubmitVisualSolutionResponse{}, err
+		currentScore, err := utils.NumericToFloat64(currentScoreNumeric)
+		if err != nil {
+			return 0, err
 		}
-		return dto.SubmitVisualSolutionResponse{
-			Status:        submissionStatus,
-			PointsAwarded: 0,
-			Note:          "Already answered",
-		}, nil
-	}
 
-	//updating the user score
-	currentScoreNumeric, err := qtx.GetUserScoreForUpdate(ctx, userID)
-	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
-	}
-	currentScore, err := utils.NumericToFloat64(currentScoreNumeric)
-	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
-	}
+		newScore := currentScore + solutionPoints
 
-	newScore := currentScore + solutionPoints
+		newScoreNumeric, err := utils.Float64ToNumeric(newScore)
+		if err != nil {
+			return 0, err
+		}
 
-	newScoreNumeric, err := utils.Float64ToNumeric(newScore)
-	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
-	}
+		err = qtx.UpdateUserScore(ctx, sqlc.UpdateUserScoreParams{
+			ID:    userID,
+			Score: newScoreNumeric,
+		})
+		if err != nil {
+			return 0, err
+		}
 
-	err = qtx.UpdateUserScore(ctx, sqlc.UpdateUserScoreParams{
-		ID:    userID,
-		Score: newScoreNumeric,
-	})
-	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
-	}
+		pointsAwarded = solutionPoints
 
-	pointsAwarded = solutionPoints
+		//updating the user balance
+		currentUserBalanceNumeric, err := qtx.GetUserBalanceForUpdate(ctx, userID)
+		if err != nil {
+			return 0, err
+		}
+		questionRewardNumeric, err := qtx.GetQuestionReward(ctx, req.QuestionID)
+		if err != nil {
+			return 0, err
+		}
 
-	//updating the user balance
-	currentUserBalanceNumeric, err := qtx.GetUserBalanceForUpdate(ctx, userID)
-	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
-	}
-	questionRewardNumeric, err := qtx.GetQuestionReward(ctx, req.QuestionID)
-	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
-	}
+		questionReward, err := utils.NumericToFloat64(questionRewardNumeric)
+		if err != nil {
+			return 0, err
+		}
+		currentBalance, err := utils.NumericToFloat64(currentUserBalanceNumeric)
+		if err != nil {
+			return 0, err
+		}
 
-	questionReward, err := utils.NumericToFloat64(questionRewardNumeric)
-	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
-	}
-	currentBalance, err := utils.NumericToFloat64(currentUserBalanceNumeric)
-	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
-	}
+		newBalance := currentBalance + questionReward
 
-	newBalance := currentBalance + questionReward
+		newBalanceNumeric, err := utils.Float64ToNumeric(newBalance)
+		if err != nil {
+			return 0, err
+		}
 
-	newBalanceNumeric, err := utils.Float64ToNumeric(newBalance)
-	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
-	}
+		err = qtx.UpdateUserBalance(ctx, sqlc.UpdateUserBalanceParams{
+			ID:      userID,
+			Balance: newBalanceNumeric,
+		})
+		if err != nil {
+			return 0, err
+		}
 
-	err = qtx.UpdateUserBalance(ctx, sqlc.UpdateUserBalanceParams{
-		ID:      userID,
-		Balance: newBalanceNumeric,
-	})
-	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
-	}
-
-	err = qtx.UpdateAttemptStatus(
-		ctx,
-		sqlc.UpdateAttemptStatusParams{
-			UserID:     userID,
-			QuestionID: req.QuestionID,
-			Status:     "answered",
-			AnsweredAt: pgtype.Timestamptz{
-				Time:  time.Now(),
-				Valid: true,
+		err = qtx.UpdateAttemptStatus(
+			ctx,
+			sqlc.UpdateAttemptStatusParams{
+				UserID:     userID,
+				QuestionID: req.QuestionID,
+				Status:     "answered",
+				AnsweredAt: pgtype.Timestamptz{
+					Time:  time.Now(),
+					Valid: true,
+				},
 			},
-		},
-	)
-	if err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
+		)
+		if err != nil {
+			return 0, err
+		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return dto.SubmitVisualSolutionResponse{}, err
-	}
-	return dto.SubmitVisualSolutionResponse{
-		Status:        submissionStatus,
-		PointsAwarded: pointsAwarded,
-	}, nil
 
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+
+	return pointsAwarded, nil
 }
 
 func uuidSlicesEqual(a, b []uuid.UUID) bool {

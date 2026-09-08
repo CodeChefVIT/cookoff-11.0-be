@@ -1,4 +1,41 @@
---this query is already there in vihaan's pr just making it here to use it for the submit sequence
+-- name: ListQuestionsByRound :many
+SELECT
+    id,
+    description,
+    title,
+    q_type,
+    input_format,
+    COALESCE(buy_in::text, ''::text) AS buy_in,
+    COALESCE(reward::text, ''::text) AS reward,
+    points,
+    round,
+    constraints,
+    output_format,
+    sample_test_input,
+    sample_test_output,
+    explanation
+FROM questions
+WHERE round = $1
+ORDER BY title ASC, id ASC;
+
+-- name: GetQuestionByID :one
+SELECT
+    id,
+    description,
+    title,
+    q_type,
+    input_format,
+    COALESCE(buy_in::text, ''::text) AS buy_in,
+    COALESCE(reward::text, ''::text) AS reward,
+    points,
+    round,
+    constraints,
+    output_format,
+    sample_test_input,
+    sample_test_output,
+    explanation
+FROM questions
+WHERE id = $1;
 
 -- name: GetRoundOneVisualQuestion :one
 SELECT id

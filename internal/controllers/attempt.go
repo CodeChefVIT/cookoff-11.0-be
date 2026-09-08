@@ -52,7 +52,7 @@ func (c *AttemptController) CreateAttempt(ctx echo.Context) error {
 		))
 	}
 
-	attempt, err := c.createAttempt(
+	attemptResp, err := c.createAttempt(
 		ctx.Request().Context(),
 		userID,
 		questionID,
@@ -78,7 +78,7 @@ func (c *AttemptController) CreateAttempt(ctx echo.Context) error {
 	}
 
 	return ctx.JSON(http.StatusOK, dto.NewSuccessResponse(
-		"Attempt created successfully", attempt,
+		"Attempt created successfully", attemptResp,
 	))
 }
 
@@ -91,13 +91,13 @@ func (c *AttemptController) createAttempt(
 	ctx context.Context,
 	userID uuid.UUID,
 	questionID uuid.UUID,
-) (sqlc.Attempt, error) {
+) (*dto.AttemptResponse, error) {
 	tx, err := c.db.Begin(ctx)
 	if err != nil {
-		return sqlc.Attempt{}, err
+		return nil, err
 	}
 
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	qtx := c.queries.WithTx(tx)
 
@@ -106,42 +106,42 @@ func (c *AttemptController) createAttempt(
 		QuestionID: questionID,
 	})
 	if err == nil {
-		return sqlc.Attempt{}, ErrAttemptAlreadyExists
+		return nil, ErrAttemptAlreadyExists
 	}
 
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return sqlc.Attempt{}, err
+		return nil, err
 	}
 
 	balanceNumeric, err := qtx.GetUserBalanceForUpdate(ctx, userID)
 	if err != nil {
-		return sqlc.Attempt{}, err
+		return nil, err
 	}
 
 	buyInNumeric, err := qtx.GetQuestionBuyIn(ctx, questionID)
 	if err != nil {
-		return sqlc.Attempt{}, err
+		return nil, err
 	}
 
 	balance, err := utils.NumericToFloat64(balanceNumeric)
 	if err != nil {
-		return sqlc.Attempt{}, err
+		return nil, err
 	}
 
 	buyIn, err := utils.NumericToFloat64(buyInNumeric)
 	if err != nil {
-		return sqlc.Attempt{}, err
+		return nil, err
 	}
 
 	if balance < buyIn {
-		return sqlc.Attempt{}, ErrInsufficientBalance
+		return nil, ErrInsufficientBalance
 	}
 
 	balance -= buyIn
 
 	newBalanceNumeric, err := utils.Float64ToNumeric(balance)
 	if err != nil {
-		return sqlc.Attempt{}, err
+		return nil, err
 	}
 
 	err = qtx.UpdateUserBalance(ctx, sqlc.UpdateUserBalanceParams{
@@ -149,7 +149,7 @@ func (c *AttemptController) createAttempt(
 		Balance: newBalanceNumeric,
 	})
 	if err != nil {
-		return sqlc.Attempt{}, err
+		return nil, err
 	}
 
 	attempt, err := qtx.CreateAttempt(ctx, sqlc.CreateAttemptParams{
@@ -160,8 +160,19 @@ func (c *AttemptController) createAttempt(
 		IsBuyInPaid: true,
 	})
 	if err != nil {
-		return sqlc.Attempt{}, err
+		return nil, err
 	}
 
-	return attempt, err
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	return &dto.AttemptResponse{
+		ID:          attempt.ID,
+		QuestionID:  attempt.QuestionID,
+		UserID:      attempt.UserID,
+		Status:      attempt.Status,
+		NewBalance:  balance,
+		IsBuyInPaid: attempt.IsBuyInPaid,
+	}, nil
 }
