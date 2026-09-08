@@ -14,7 +14,6 @@ import (
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/labstack/echo/v4"
 )
 
@@ -67,10 +66,10 @@ func (ac *AuthController) GoogleCallback(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "Google authentication failed")
 	}
-	user, err := ac.findOrCreateUser(c.Request().Context(), identity)
+	user, err := ac.findUser(c.Request().Context(), identity)
 	if err != nil {
-		if errors.Is(err, ErrEmailAlreadyUsed) {
-			return echo.NewHTTPError(http.StatusConflict, "account cannot be linked")
+		if errors.Is(err, pgx.ErrNoRows) {
+			return echo.NewHTTPError(http.StatusUnauthorized, "account is not registered")
 		}
 		return echo.NewHTTPError(http.StatusInternalServerError, "unable to establish session")
 	}
@@ -133,8 +132,6 @@ func (ac *AuthController) unauthorized(c echo.Context) error {
 
 type googleIdentity struct{ Subject, Email, Name string }
 
-var ErrEmailAlreadyUsed = errors.New("email already belongs to another account")
-
 func (ac *AuthController) googleIdentity(ctx context.Context, code string) (googleIdentity, error) {
 	values := url.Values{"code": {code}, "client_id": {utils.Config.GoogleClientID}, "client_secret": {utils.Config.GoogleClientSecret}, "redirect_uri": {utils.Config.GoogleRedirectURI}, "grant_type": {"authorization_code"}}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, googleTokenURL, strings.NewReader(values.Encode()))
@@ -186,26 +183,17 @@ func (ac *AuthController) googleIdentity(ctx context.Context, code string) (goog
 	return googleIdentity{Subject: info.Subject, Email: info.Email, Name: info.Name}, nil
 }
 
-func (ac *AuthController) findOrCreateUser(ctx context.Context, identity googleIdentity) (sqlc.User, error) {
+func (ac *AuthController) findUser(ctx context.Context, identity googleIdentity) (sqlc.User, error) {
 	user, err := ac.queries.GetUserByGoogleID(ctx, identity.Subject)
-	if err == nil {
-		return user, nil
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil {
 		return sqlc.User{}, err
 	}
-	id := uuid.New()
-	user, err = ac.queries.CreateGoogleUser(ctx, sqlc.CreateGoogleUserParams{ID: id, Email: identity.Email, RegNo: "oauth_" + id.String(), Role: "user", GoogleID: identity.Subject, Name: identity.Name})
-	var dbErr *pgconn.PgError
-	if errors.As(err, &dbErr) && dbErr.Code == "23505" {
-		return sqlc.User{}, ErrEmailAlreadyUsed
-	}
-	return user, err
+	return user, nil
 }
 
 func portalURL(portal string) string {
 	if portal == "admin" {
-		return strings.TrimRight(utils.Config.AdminURL, "/")
+		return strings.TrimRight(utils.Config.AdminURL, "/") + "/dashboard"
 	}
 	return strings.TrimRight(utils.Config.FrontendURL, "/")
 }
