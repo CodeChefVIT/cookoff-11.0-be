@@ -21,6 +21,9 @@ type cfg struct {
 	GoogleRedirectURI  string        `env:"GOOGLE_REDIRECT_URI"`
 	GoogleClientID     string        `env:"GOOGLE_CLIENT_ID"`
 	GoogleClientSecret string        `env:"GOOGLE_CLIENT_SECRET"`
+	GoogleAuthURL      string        `env:"GOOGLE_AUTH_URL" envDefault:"https://accounts.google.com/o/oauth2/v2/auth"`
+	GoogleTokenURL     string        `env:"GOOGLE_TOKEN_URL" envDefault:"https://oauth2.googleapis.com/token"`
+	GoogleInfoURL      string        `env:"GOOGLE_INFO_URL" envDefault:"https://oauth2.googleapis.com/tokeninfo"`
 	AccessTokenTTL     time.Duration `env:"ACCESS_TOKEN_TTL" envDefault:"15m"`
 	RefreshTokenTTL    time.Duration `env:"REFRESH_TOKEN_TTL" envDefault:"48h"`
 
@@ -65,7 +68,7 @@ func LoadConfig() error {
 		return fmt.Errorf("JWT_SECRET must not be empty")
 	}
 	if Config.GoogleRedirectURI == "" || Config.GoogleClientID == "" || Config.GoogleClientSecret == "" {
-		return fmt.Errorf("Google OAuth configuration is incomplete")
+		return fmt.Errorf("google OAuth configuration is incomplete")
 	}
 	if Config.AccessTokenTTL <= 0 || Config.RefreshTokenTTL <= 0 {
 		return fmt.Errorf("token TTLs must be positive")

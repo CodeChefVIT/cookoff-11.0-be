@@ -112,7 +112,7 @@ func ValidateState(cookie *http.Cookie, state string) (string, bool) {
 func ClearStateCookie() *http.Cookie { return newCookie(StateCookie, "", -time.Hour) }
 
 func newCookie(name, value string, ttl time.Duration) *http.Cookie {
-	cookie := &http.Cookie{Name: name, Value: value, Path: "/", HttpOnly: true, Secure: utils.Config.CookieSecure, SameSite: http.SameSiteLaxMode}
+	cookie := &http.Cookie{Name: name, Value: value, Path: "/", HttpOnly: true, Secure: utils.Config.CookieSecure, SameSite: http.SameSiteLaxMode} // #nosec G124 -- local HTTP development disables Secure; production config enables it.
 	// Browsers treat localhost as a special host and may drop cookies that
 	// explicitly declare Domain=localhost. Leave the domain unset locally;
 	// production deployments can still share cookies across subdomains.
