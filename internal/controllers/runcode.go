@@ -64,18 +64,18 @@ func RunCode(c echo.Context) error {
 
 		defer resp.Body.Close()
 
-		/*
 		if resp.StatusCode != http.StatusCreated {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failure at Judge0"})
-		}*/
-
+		}
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Error reading response body"})
 		}
 
-		json.Unmarshal(body, &result[i])
+		if err = json.Unmarshal(body, &result[i]); err!=nil{
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to unmarshal response"})
+		}
 
 		decoded, _ := base64.StdEncoding.DecodeString(*result[i].StdOut)
 		*result[i].StdOut = string(decoded)
@@ -128,10 +128,9 @@ func RunCustom(c echo.Context) error {
 
 	defer resp.Body.Close()
 
-	/*
 	if resp.StatusCode != http.StatusCreated {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failure at Judge0"})
-	}*/
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

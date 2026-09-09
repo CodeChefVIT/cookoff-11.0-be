@@ -33,11 +33,16 @@ func RegisterRoutes(e *echo.Echo) {
 	e.GET("/result/:submission_id", controllers.GetResult, authenticated...)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 	RegisterAttemptRoutes(e, authenticated...)
 	RegisterVisualSubmissionRoutes(e, authenticated...)
 =======
 	e.GET("/runcode", controllers.RunCode)
 	e.GET("/runcustom", controllers.RunCustom)
+=======
+	e.POST("/runcode", controllers.RunCode)
+	e.POST("/runcustom", controllers.RunCustom)
+>>>>>>> 78d6133 (resolved some issue, refactored judge0 status)
 
 	RegisterAttemptRoutes(e)
 	RegisterVisualSubmissionRoutes(e)

@@ -12,6 +12,7 @@ import(
 
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 )
 
 
@@ -63,10 +64,7 @@ func checkSubmissionStatus(ctx context.Context, submissionID uuid.UUID) (bool, e
 		return false, nil
 	}
 
-	//refactor later
-	const SUBMISSION_DONE_STATUS = "DONE"
-
-	return *status==SUBMISSION_DONE_STATUS, nil
+	return *status==utils.Judge0Accepted.GetJudge0Status(), nil
 }
 
 
