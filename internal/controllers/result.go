@@ -36,11 +36,12 @@ func GetResult(c echo.Context) error {
 			return c.JSON(http.StatusRequestTimeout, map[string]string{"error": "submission not processed yet"})
 
 		case <-ticker.C:
-			done, err := checkSubmissionStatus(ctx, submissionID)
-			if err!=nil{
+			status, err := db.Queries.GetSubmissionStatusByID(ctx, submissionID)
+			if err!=nil || status==nil{
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get submission status"})
 			}
-			if done{
+
+			if *status!=utils.Judge0InQueue.GetJudge0Status() || *status!=utils.Judge0Processing.GetJudge0Status(){
 				result, err := getSubmissionResult(ctx, submissionID)
 				if err!=nil{
 					return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -53,20 +54,6 @@ func GetResult(c echo.Context) error {
 	
 	return nil
 }
-
-
-func checkSubmissionStatus(ctx context.Context, submissionID uuid.UUID) (bool, error){
-	status, err := db.Queries.GetSubmissionStatusByID(ctx, submissionID)
-	if err!=nil{
-		return false, err
-	}
-	if status==nil{
-		return false, nil
-	}
-
-	return *status==utils.Judge0Accepted.GetJudge0Status(), nil
-}
-
 
 
 func getSubmissionResult(ctx context.Context, submissionID uuid.UUID) (dto.ResultResponse, error){

@@ -77,12 +77,18 @@ func RunCode(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to unmarshal response"})
 		}
 
-		decoded, _ := base64.StdEncoding.DecodeString(*result[i].StdOut)
-		*result[i].StdOut = string(decoded)
-		decoded, _ = base64.StdEncoding.DecodeString(*result[i].StdErr)
-		*result[i].StdErr = string(decoded)
-		decoded, _ = base64.StdEncoding.DecodeString(*result[i].Message)
-		*result[i].Message = string(decoded)
+		if result[i].StdOut!=nil{
+			decoded, _ := base64.StdEncoding.DecodeString(*result[i].StdOut)
+			*result[i].StdOut = string(decoded)
+		}
+		if result[i].StdErr!=nil{
+			decoded, _ := base64.StdEncoding.DecodeString(*result[i].StdErr)
+			*result[i].StdErr = string(decoded)
+		}
+		if result[i].Message!=nil{
+			decoded, _ := base64.StdEncoding.DecodeString(*result[i].Message)
+			*result[i].Message = string(decoded)
+		}
 	}
 
 
