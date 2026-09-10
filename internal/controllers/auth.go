@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/auth"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
@@ -24,7 +25,7 @@ type AuthController struct {
 }
 
 func NewAuthController(queries *sqlc.Queries) *AuthController {
-	return &AuthController{queries: queries, client: http.DefaultClient}
+	return &AuthController{queries: queries, client: &http.Client{Timeout: 5 * time.Second}}
 }
 
 func (ac *AuthController) StartGoogle(c echo.Context) error {

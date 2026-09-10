@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/caarlos0/env/v11"
 	"github.com/joho/godotenv"
 )
@@ -58,7 +59,7 @@ var CORSOrigins []string
 
 func LoadConfig() error {
 	if err := godotenv.Load(); err != nil {
-		fmt.Println("No .env file found, continuing with environment variables")
+		logging.Infof("No .env file found, continuing with environment variables")
 	}
 
 	if err := env.Parse(&Config); err != nil {
@@ -103,6 +104,6 @@ func LoadConfig() error {
 		CORSOrigins = append(CORSOrigins, strings.TrimRight(strings.TrimSpace(Config.AdminURL), "/"))
 	}
 
-	fmt.Printf("Configuration successfully loaded\n")
+	logging.Infof("Configuration successfully loaded")
 	return nil
 }
