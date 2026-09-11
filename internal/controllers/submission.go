@@ -73,7 +73,7 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failure at Judge0"})

@@ -17,7 +17,6 @@ import (
 )
 
 func RunCode(c echo.Context) error {
-
 	var req dto.SubmissionRequest
 
 	if err := c.Bind(&req); err != nil {
@@ -37,18 +36,16 @@ func RunCode(c echo.Context) error {
 
 	ctx := c.Request().Context()
 
-	//fetch testcases from db
+	// fetch testcases from db
 	testcases, err := db.Queries.GetPublicTestCasesByQuestion(ctx, questionID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	result := make([]dto.Judge0CallbackPayload, len(testcases))
-
 	client := &http.Client{}
 
 	for i, testcase := range testcases {
-
 		payload, err := submission.CreateSubmissionPayload(req.SourceCode, req.LanguageID, testcase)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -59,13 +56,13 @@ func RunCode(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 
-		defer resp.Body.Close()
-
 		if resp.StatusCode != http.StatusCreated {
+			_ = resp.Body.Close()
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failure at Judge0"})
 		}
 
 		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Error reading response body"})
 		}
@@ -75,16 +72,22 @@ func RunCode(c echo.Context) error {
 		}
 
 		if result[i].StdOut != nil {
-			decoded, _ := base64.StdEncoding.DecodeString(*result[i].StdOut)
-			*result[i].StdOut = string(decoded)
+			if decoded, err := base64.StdEncoding.DecodeString(*result[i].StdOut); err == nil {
+				str := string(decoded)
+				result[i].StdOut = &str
+			}
 		}
 		if result[i].StdErr != nil {
-			decoded, _ := base64.StdEncoding.DecodeString(*result[i].StdErr)
-			*result[i].StdErr = string(decoded)
+			if decoded, err := base64.StdEncoding.DecodeString(*result[i].StdErr); err == nil {
+				str := string(decoded)
+				result[i].StdErr = &str
+			}
 		}
 		if result[i].Message != nil {
-			decoded, _ := base64.StdEncoding.DecodeString(*result[i].Message)
-			*result[i].Message = string(decoded)
+			if decoded, err := base64.StdEncoding.DecodeString(*result[i].Message); err == nil {
+				str := string(decoded)
+				result[i].Message = &str
+			}
 		}
 	}
 
@@ -92,7 +95,6 @@ func RunCode(c echo.Context) error {
 }
 
 func RunCustom(c echo.Context) error {
-
 	var req dto.CustomSubmissionRequest
 
 	if err := c.Bind(&req); err != nil {
@@ -102,15 +104,9 @@ func RunCustom(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	//dummy testcase
+	// dummy testcase
 	testcase := sqlc.Testcase{
-		//ID             uuid.UUID
-		//ExpectedOutput string
-		//Memory         pgtype.Numeric
 		Input: req.Stdin,
-		//Hidden         bool
-		//Runtime        pgtype.Numeric
-		//QuestionID     uuid.UUID
 	}
 
 	payload, err := submission.CreateSubmissionPayload(req.SourceCode, req.LanguageID, testcase)
@@ -125,7 +121,7 @@ func RunCustom(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failure at Judge0"})
@@ -137,15 +133,28 @@ func RunCustom(c echo.Context) error {
 	}
 
 	var result dto.Judge0CallbackPayload
+	if err := json.Unmarshal(body, &result); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to unmarshal response"})
+	}
 
-	json.Unmarshal(body, &result)
-
-	decoded, _ := base64.StdEncoding.DecodeString(*result.StdOut)
-	*result.StdOut = string(decoded)
-	decoded, _ = base64.StdEncoding.DecodeString(*result.StdErr)
-	*result.StdErr = string(decoded)
-	decoded, _ = base64.StdEncoding.DecodeString(*result.Message)
-	*result.Message = string(decoded)
+	if result.StdOut != nil {
+		if decoded, err := base64.StdEncoding.DecodeString(*result.StdOut); err == nil {
+			str := string(decoded)
+			result.StdOut = &str
+		}
+	}
+	if result.StdErr != nil {
+		if decoded, err := base64.StdEncoding.DecodeString(*result.StdErr); err == nil {
+			str := string(decoded)
+			result.StdErr = &str
+		}
+	}
+	if result.Message != nil {
+		if decoded, err := base64.StdEncoding.DecodeString(*result.Message); err == nil {
+			str := string(decoded)
+			result.Message = &str
+		}
+	}
 
 	return c.JSON(http.StatusOK, result)
 }
