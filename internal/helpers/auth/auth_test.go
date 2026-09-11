@@ -22,15 +22,14 @@ func TestAccessTokenCannotBeUsedAsRefreshToken(t *testing.T) {
 }
 
 func TestStateValidation(t *testing.T) {
-	state, cookie, err := NewState("admin")
+	state, cookie, err := NewState()
 	if err != nil {
 		t.Fatal(err)
 	}
-	portal, ok := ValidateState(cookie, state)
-	if !ok || portal != "admin" {
+	if !ValidateState(cookie, state) {
 		t.Fatal("valid state was rejected")
 	}
-	if _, ok := ValidateState(cookie, "other"); ok {
+	if ValidateState(cookie, "other") {
 		t.Fatal("invalid state was accepted")
 	}
 }

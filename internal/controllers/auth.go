@@ -28,14 +28,10 @@ func NewAuthController(queries *sqlc.Queries) *AuthController {
 }
 
 func (ac *AuthController) StartGoogle(c echo.Context) error {
-	portal := c.QueryParam("portal")
-	if portal != "admin" && portal != "participant" {
-		return echo.NewHTTPError(http.StatusBadRequest, "invalid portal")
-	}
 	if utils.Config.GoogleClientID == "" || utils.Config.GoogleClientSecret == "" || utils.Config.GoogleRedirectURI == "" {
 		return echo.NewHTTPError(http.StatusInternalServerError, "OAuth is not configured")
 	}
-	state, cookie, err := auth.NewState(portal)
+	state, cookie, err := auth.NewState()
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "unable to start OAuth")
 	}
@@ -52,7 +48,7 @@ func (ac *AuthController) StartGoogle(c echo.Context) error {
 
 func (ac *AuthController) GoogleCallback(c echo.Context) error {
 	stateCookie, err := c.Cookie(auth.StateCookie)
-	portal, validState := auth.ValidateState(stateCookie, c.QueryParam("state"))
+	validState := auth.ValidateState(stateCookie, c.QueryParam("state"))
 	c.SetCookie(auth.ClearStateCookie())
 	if err != nil || !validState || c.QueryParam("code") == "" {
 		return echo.NewHTTPError(http.StatusUnauthorized, "invalid OAuth callback")
@@ -81,7 +77,7 @@ func (ac *AuthController) GoogleCallback(c echo.Context) error {
 	for _, cookie := range cookies {
 		c.SetCookie(cookie)
 	}
-	return c.Redirect(http.StatusFound, portalURL(portal))
+	return c.Redirect(http.StatusFound, redirectURL(user.Role))
 }
 
 func (ac *AuthController) RefreshToken(c echo.Context) error {
@@ -179,31 +175,16 @@ func (ac *AuthController) googleIdentity(ctx context.Context, code string) (goog
 }
 
 func (ac *AuthController) findUser(ctx context.Context, identity googleIdentity) (sqlc.User, error) {
-	user, err := ac.queries.GetUserByGoogleID(ctx, identity.Subject)
+	googleID := identity.Subject
+	user, err := ac.queries.GetUserByGoogleID(ctx, &googleID)
 	if err != nil {
 		return sqlc.User{}, err
 	}
 	return user, nil
-func (ac *AuthController) findOrCreateUser(ctx context.Context, identity googleIdentity) (sqlc.User, error) {
-	googleID := identity.Subject
-	user, err := ac.queries.GetUserByGoogleID(ctx, &googleID)
-	if err == nil {
-		return user, nil
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return sqlc.User{}, err
-	}
-	id := uuid.New()
-	user, err = ac.queries.CreateGoogleUser(ctx, sqlc.CreateGoogleUserParams{ID: id, Email: identity.Email, RegNo: "oauth_" + id.String(), Role: "user", GoogleID: &googleID, Name: identity.Name})
-	var dbErr *pgconn.PgError
-	if errors.As(err, &dbErr) && dbErr.Code == "23505" {
-		return sqlc.User{}, ErrEmailAlreadyUsed
-	}
-	return user, err
 }
 
-func portalURL(portal string) string {
-	if portal == "admin" {
+func redirectURL(role string) string {
+	if strings.ToLower(role) == "admin" {
 		return strings.TrimRight(utils.Config.AdminURL, "/") + "/dashboard"
 	}
 	return strings.TrimRight(utils.Config.FrontendURL, "/")
