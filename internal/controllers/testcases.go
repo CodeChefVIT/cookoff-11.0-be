@@ -21,7 +21,7 @@ type testcaseQueries interface {
 	DeleteTestCase(context.Context, uuid.UUID) (uuid.UUID, error)
 	GetQuestionForUser(context.Context, sqlc.GetQuestionForUserParams) (sqlc.GetQuestionForUserRow, error)
 	GetPublicTestCasesByQuestion(context.Context, uuid.UUID) ([]sqlc.Testcase, error)
-	GetAllTestCasesByQuestion(context.Context, uuid.UUID) ([]sqlc.GetAllTestCasesByQuestionRow, error)
+	GetAllTestCasesByQuestion(context.Context, uuid.UUID) ([]sqlc.Testcase, error)
 }
 
 type TestcaseController struct{ queries testcaseQueries }

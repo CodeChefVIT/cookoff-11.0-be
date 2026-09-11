@@ -8,5 +8,7 @@ type SubmitVisualSolutionRequest struct {
 }
 
 type SubmitVisualSolutionResponse struct {
+	Status        string  `json:"status"`
 	PointsAwarded float64 `json:"points_awarded"`
+	Note          string  `json:"note,omitempty"`
 }

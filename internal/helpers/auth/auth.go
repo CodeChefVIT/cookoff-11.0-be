@@ -86,27 +86,17 @@ func ClearSessionCookies() []*http.Cookie {
 	return []*http.Cookie{newCookie(AccessCookie, "", -time.Hour), newCookie(RefreshCookie, "", -time.Hour)}
 }
 
-func NewState(portal string) (string, *http.Cookie, error) {
+func NewState() (string, *http.Cookie, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", nil, err
 	}
 	state := base64.RawURLEncoding.EncodeToString(bytes)
-	return state, newCookie(StateCookie, state+"."+portal, 10*time.Minute), nil
+	return state, newCookie(StateCookie, state, 10*time.Minute), nil
 }
 
-func ValidateState(cookie *http.Cookie, state string) (string, bool) {
-	if cookie == nil || state == "" {
-		return "", false
-	}
-	parts := strings.Split(cookie.Value, ".")
-	if len(parts) != 2 || parts[0] != state {
-		return "", false
-	}
-	if parts[1] != "admin" && parts[1] != "participant" {
-		return "", false
-	}
-	return parts[1], true
+func ValidateState(cookie *http.Cookie, state string) bool {
+	return cookie != nil && state != "" && cookie.Value == state
 }
 
 func ClearStateCookie() *http.Cookie { return newCookie(StateCookie, "", -time.Hour) }
