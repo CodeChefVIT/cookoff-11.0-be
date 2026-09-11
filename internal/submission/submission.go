@@ -6,10 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"net/http"
 	"net/url"
+
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 )
 
 //Contains stuff only related to submission request made to judge0

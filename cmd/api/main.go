@@ -11,11 +11,11 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/queue"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/router"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"github.com/labstack/echo/v4"
 	emiddleware "github.com/labstack/echo/v4/middleware"
 )

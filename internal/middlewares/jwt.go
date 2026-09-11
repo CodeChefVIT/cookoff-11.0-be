@@ -1,48 +1,68 @@
 package middlewares
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/auth"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
-type JWTClaims struct {
-	UserID string `json:"user_id"`
-	Email  string `json:"email"`
-	jwt.RegisteredClaims
-}
+const (
+	UserIDKey = "user_id"
+	RoleKey   = "role"
+)
 
-func JWTAuth(next echo.HandlerFunc) echo.HandlerFunc {
+func VerifyJWTMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		authHeader := c.Request().Header.Get("Authorization")
-		if authHeader == "" {
-			return echo.NewHTTPError(http.StatusUnauthorized, "Missing Authorization header")
+		cookie, err := c.Cookie(auth.AccessCookie)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
 		}
-
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			return echo.NewHTTPError(http.StatusUnauthorized, "Invalid Authorization header format")
+		claims, err := auth.ParseToken(cookie.Value, auth.AccessType)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
 		}
-
-		tokenString := parts[1]
-		claims := &JWTClaims{}
-
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-			}
-			return []byte(utils.Config.JWTSecret), nil
-		})
-
-		if err != nil || !token.Valid {
-			return echo.NewHTTPError(http.StatusUnauthorized, "Invalid or expired JWT token")
-		}
-
-		c.Set("user", claims)
+		c.Set(UserIDKey, claims.UserID)
+		c.Set(RoleKey, strings.ToLower(claims.Role))
 		return next(c)
 	}
 }
+
+func BanCheckUser(queries *sqlc.Queries) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			userID, ok := c.Get(UserIDKey).(string)
+			id, err := uuid.Parse(userID)
+			if !ok || err != nil {
+				return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
+			}
+			user, err := queries.GetUserByID(c.Request().Context(), id)
+			if err != nil || user.IsBanned {
+				clearSession(c)
+				return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
+			}
+			return next(c)
+		}
+	}
+}
+
+func AdminOnly(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		role, _ := c.Get(RoleKey).(string)
+		if strings.ToLower(role) != "admin" {
+			return echo.NewHTTPError(http.StatusForbidden, "admin access required")
+		}
+		return next(c)
+	}
+}
+
+func clearSession(c echo.Context) {
+	for _, cookie := range auth.ClearSessionCookies() {
+		c.SetCookie(cookie)
+	}
+}
+
+func JWTAuth(next echo.HandlerFunc) echo.HandlerFunc { return VerifyJWTMiddleware(next) }

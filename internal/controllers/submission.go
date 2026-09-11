@@ -1,16 +1,18 @@
 package controllers
 
 import (
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/submission"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
-
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
+
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/submission"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -28,10 +30,18 @@ func SubmitCode(c echo.Context) error {
 	}
 
 	//get user id here
-	//userID :=
+	userIDStr, ok := c.Get(middlewares.UserIDKey).(string)
+	if !ok || userIDStr == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
 
-	//auth stuff
-	//here
+	// userID is set by middlewares.VerifyJWTMiddleware (applied to this route
+	// in router.go), which validates the JWT cookie and calls
+	// c.Set(middlewares.UserIDKey, claims.UserID) before this handler runs.
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid user id"})
+	}
 
 	questionID, err := uuid.Parse(req.QuestionID)
 	if err != nil {
@@ -55,7 +65,7 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 10 * time.Second}
 
 	//send the payload
 	resp, err := submission.SendSubmissionPayload(client, payload)
@@ -108,6 +118,7 @@ func SubmitCode(c echo.Context) error {
 		QuestionID: questionID,
 		SourceCode: req.SourceCode,
 		LanguageID: int32(req.LanguageID), // #nosec G115
+		UserID:     userID,
 	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create submission in database"})

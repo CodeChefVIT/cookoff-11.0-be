@@ -1,139 +1,196 @@
 package controllers
 
 import (
+	"context"
 	"errors"
-	"net/http"
 	"strconv"
+	"strings"
 
 	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/labstack/echo/v4"
 )
 
-type QuestionController struct {
-	queries sqlc.Querier
+type questionQueries interface {
+	ListQuestionsForUser(context.Context, uuid.UUID) ([]sqlc.ListQuestionsForUserRow, error)
+	GetQuestionForUser(context.Context, sqlc.GetQuestionForUserParams) (sqlc.GetQuestionForUserRow, error)
+	ListVisualBlocksByQuestionID(context.Context, uuid.UUID) ([]sqlc.VisualBlock, error)
+	CreateQuestion(context.Context, sqlc.CreateQuestionParams) (sqlc.Question, error)
+	UpdateQuestion(context.Context, sqlc.UpdateQuestionParams) (sqlc.Question, error)
+	DeleteQuestion(context.Context, uuid.UUID) (uuid.UUID, error)
+	SetQuestionBountyActive(context.Context, sqlc.SetQuestionBountyActiveParams) (sqlc.Question, error)
 }
 
-func NewQuestionController(queries sqlc.Querier) *QuestionController {
-	return &QuestionController{queries: queries}
+type QuestionController struct{ queries questionQueries }
+
+func NewQuestionController(q questionQueries) *QuestionController {
+	return &QuestionController{queries: q}
+}
+func userID(c echo.Context) (uuid.UUID, error) {
+	raw, ok := c.Get(middlewares.UserIDKey).(string)
+	if !ok {
+		return uuid.Nil, errors.New("unauthorized")
+	}
+	return uuid.Parse(raw)
+}
+func parseQuestionID(c echo.Context) (uuid.UUID, error) { return uuid.Parse(c.Param("id")) }
+func questionError(c echo.Context, s int, m string) error {
+	return c.JSON(s, dto.NewErrorResponse(m, nil))
 }
 
 func (qc *QuestionController) ListByRound(c echo.Context) error {
-	round, err := strconv.ParseInt(c.QueryParam("round"), 10, 32)
-	if err != nil || round < 1 {
-		return questionError(c, http.StatusBadRequest, "round must be a positive integer")
+	id, e := userID(c)
+	if e != nil {
+		return questionError(c, 401, "unauthorized")
 	}
-
-	questions, err := qc.queries.ListQuestionsByRound(c.Request().Context(), int32(round))
-	if err != nil {
-		return questionError(c, http.StatusInternalServerError, "failed to load questions")
+	rows, e := qc.queries.ListQuestionsForUser(c.Request().Context(), id)
+	if e != nil {
+		return questionError(c, 500, "failed to load questions")
 	}
-
-	response := make([]dto.QuestionResponse, len(questions))
-	for i, question := range questions {
-		response[i] = questionListResponse(question)
+	out := make([]dto.QuestionResponse, len(rows))
+	for i, q := range rows {
+		out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive)
 	}
-
-	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Questions retrieved", response))
+	return c.JSON(200, dto.NewSuccessResponse("Questions retrieved", out))
 }
-
 func (qc *QuestionController) GetByID(c echo.Context) error {
-	questionID, err := parseQuestionID(c)
-	if err != nil {
-		return questionError(c, http.StatusBadRequest, "invalid question ID")
+	qid, e := parseQuestionID(c)
+	if e != nil {
+		return questionError(c, 400, "invalid question ID")
 	}
-
-	question, err := qc.queries.GetQuestionByID(c.Request().Context(), questionID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return questionError(c, http.StatusNotFound, "question not found")
+	uid, e := userID(c)
+	if e != nil {
+		return questionError(c, 401, "unauthorized")
 	}
-	if err != nil {
-		return questionError(c, http.StatusInternalServerError, "failed to load question")
+	q, e := qc.queries.GetQuestionForUser(c.Request().Context(), sqlc.GetQuestionForUserParams{ID: qid, ID_2: uid})
+	if errors.Is(e, pgx.ErrNoRows) {
+		return questionError(c, 404, "question not found")
 	}
-
-	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Question retrieved", questionResponse(question)))
+	if e != nil {
+		return questionError(c, 500, "failed to load question")
+	}
+	return c.JSON(200, dto.NewSuccessResponse("Question retrieved", questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive)))
 }
-
 func (qc *QuestionController) ListBlocks(c echo.Context) error {
-	questionID, err := parseQuestionID(c)
-	if err != nil {
-		return questionError(c, http.StatusBadRequest, "invalid question ID")
+	qid, e := parseQuestionID(c)
+	if e != nil {
+		return questionError(c, 400, "invalid question ID")
 	}
-
-	if _, getErr := qc.queries.GetRoundOneVisualQuestion(c.Request().Context(), questionID); errors.Is(getErr, pgx.ErrNoRows) {
-		return questionError(c, http.StatusNotFound, "Round 1 visual question not found")
-	} else if getErr != nil {
-		return questionError(c, http.StatusInternalServerError, "failed to verify question")
+	uid, e := userID(c)
+	if e != nil {
+		return questionError(c, 401, "unauthorized")
 	}
-
-	blocks, err := qc.queries.ListVisualBlocksByQuestionID(c.Request().Context(), questionID)
-	if err != nil {
-		return questionError(c, http.StatusInternalServerError, "failed to load visual blocks")
+	q, e := qc.queries.GetQuestionForUser(c.Request().Context(), sqlc.GetQuestionForUserParams{ID: qid, ID_2: uid})
+	if e != nil || q.Round != 1 || !strings.EqualFold(q.QType, "visual") {
+		return questionError(c, 404, "Round 1 visual question not found")
 	}
-
-	response := make([]dto.VisualBlockResponse, len(blocks))
-	for i, block := range blocks {
-		response[i] = dto.VisualBlockResponse{ID: block.ID, Content: block.Content}
+	blocks, e := qc.queries.ListVisualBlocksByQuestionID(c.Request().Context(), qid)
+	if e != nil {
+		return questionError(c, 500, "failed to load visual blocks")
 	}
-
-	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Visual blocks retrieved", response))
+	out := make([]dto.VisualBlockResponse, len(blocks))
+	for i, b := range blocks {
+		out[i] = dto.VisualBlockResponse{ID: b.ID, Content: b.Content}
+	}
+	return c.JSON(200, dto.NewSuccessResponse("Visual blocks retrieved", out))
 }
-
-func parseQuestionID(c echo.Context) (uuid.UUID, error) {
-	return uuid.Parse(c.Param("id"))
+func (qc *QuestionController) Create(c echo.Context) error {
+	var r dto.QuestionRequest
+	if e := c.Bind(&r); e != nil {
+		return questionError(c, 400, "invalid request body")
+	}
+	if e := c.Validate(&r); e != nil {
+		return questionError(c, 400, "validation failed")
+	}
+	q, e := qc.queries.CreateQuestion(c.Request().Context(), questionParams(uuid.New(), r))
+	if e != nil {
+		return questionError(c, 500, "failed to create question")
+	}
+	return c.JSON(201, dto.NewSuccessResponse("Question created", questionFromModel(q)))
 }
-
-func questionError(c echo.Context, status int, message string) error {
-	return c.JSON(status, dto.NewErrorResponse(message, nil))
+func (qc *QuestionController) Update(c echo.Context) error {
+	id, e := parseQuestionID(c)
+	if e != nil {
+		return questionError(c, 400, "invalid question ID")
+	}
+	var r dto.QuestionRequest
+	if e = c.Bind(&r); e != nil {
+		return questionError(c, 400, "invalid request body")
+	}
+	if e = c.Validate(&r); e != nil {
+		return questionError(c, 400, "validation failed")
+	}
+	q, e := qc.queries.UpdateQuestion(c.Request().Context(), sqlc.UpdateQuestionParams(questionParams(id, r)))
+	if errors.Is(e, pgx.ErrNoRows) {
+		return questionError(c, 404, "question not found")
+	}
+	if e != nil {
+		return questionError(c, 500, "failed to update question")
+	}
+	return c.JSON(200, dto.NewSuccessResponse("Question updated", questionFromModel(q)))
 }
-
-func questionResponse(question sqlc.GetQuestionByIDRow) dto.QuestionResponse {
-	return dto.QuestionResponse{
-		ID:               question.ID,
-		Description:      question.Description,
-		Title:            question.Title,
-		Type:             question.QType,
-		InputFormat:      question.InputFormat,
-		BuyIn:            textValue(question.BuyIn),
-		Reward:           textValue(question.Reward),
-		Points:           question.Points,
-		Round:            question.Round,
-		Constraints:      question.Constraints,
-		OutputFormat:     question.OutputFormat,
-		SampleTestInput:  question.SampleTestInput,
-		SampleTestOutput: question.SampleTestOutput,
-		Explanation:      question.Explanation,
+func (qc *QuestionController) Delete(c echo.Context) error {
+	id, e := parseQuestionID(c)
+	if e != nil {
+		return questionError(c, 400, "invalid question ID")
+	}
+	_, e = qc.queries.DeleteQuestion(c.Request().Context(), id)
+	if errors.Is(e, pgx.ErrNoRows) {
+		return questionError(c, 404, "question not found")
+	}
+	if e != nil {
+		return questionError(c, 500, "failed to delete question")
+	}
+	return c.JSON(200, dto.NewSuccessResponse("Question deleted", nil))
+}
+func (qc *QuestionController) SetBounty(active bool) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		id, e := parseQuestionID(c)
+		if e != nil {
+			return questionError(c, 400, "invalid question ID")
+		}
+		q, e := qc.queries.SetQuestionBountyActive(c.Request().Context(), sqlc.SetQuestionBountyActiveParams{ID: id, BountyActive: active})
+		if errors.Is(e, pgx.ErrNoRows) {
+			return questionError(c, 404, "question not found")
+		}
+		if e != nil {
+			return questionError(c, 500, "failed to update bounty")
+		}
+		return c.JSON(200, dto.NewSuccessResponse("Bounty updated", questionFromModel(q)))
 	}
 }
-
-func questionListResponse(question sqlc.ListQuestionsByRoundRow) dto.QuestionResponse {
-	return dto.QuestionResponse{
-		ID:               question.ID,
-		Description:      question.Description,
-		Title:            question.Title,
-		Type:             question.QType,
-		InputFormat:      question.InputFormat,
-		BuyIn:            textValue(question.BuyIn),
-		Reward:           textValue(question.Reward),
-		Points:           question.Points,
-		Round:            question.Round,
-		Constraints:      question.Constraints,
-		OutputFormat:     question.OutputFormat,
-		SampleTestInput:  question.SampleTestInput,
-		SampleTestOutput: question.SampleTestOutput,
-		Explanation:      question.Explanation,
+func questionParams(id uuid.UUID, r dto.QuestionRequest) sqlc.CreateQuestionParams {
+	p := sqlc.CreateQuestionParams{ID: id, Description: r.Description, Title: r.Title, QType: r.Type, InputFormat: r.InputFormat, Points: r.Points, Round: r.Round, Constraints: r.Constraints, OutputFormat: r.OutputFormat, SampleTestInput: r.SampleTestInput, SampleTestOutput: r.SampleTestOutput, Explanation: r.Explanation, BountyActive: r.BountyActive}
+	if r.BuyIn != nil {
+		p.BuyIn, _ = utils.Float64ToNumeric(*r.BuyIn)
 	}
+	if r.Reward != nil {
+		p.Reward, _ = utils.Float64ToNumeric(*r.Reward)
+	}
+	return p
 }
-
-func textValue(value interface{}) string {
-	switch value := value.(type) {
+func questionFromModel(q sqlc.Question) dto.QuestionResponse {
+	return questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive)
+}
+func questionFromRow(id uuid.UUID, d, t, typ string, in []string, buy, reward interface{}, pts, rnd int32, cons, out, sin, sout, exp []string, active bool) dto.QuestionResponse {
+	return dto.QuestionResponse{ID: id, Description: d, Title: t, Type: typ, InputFormat: in, BuyIn: textValue(buy), Reward: textValue(reward), Points: pts, Round: rnd, Constraints: cons, OutputFormat: out, SampleTestInput: sin, SampleTestOutput: sout, Explanation: exp, BountyActive: active}
+}
+func textValue(v interface{}) string {
+	switch x := v.(type) {
 	case string:
-		return value
+		return x
 	case []byte:
-		return string(value)
-	default:
-		return ""
+		return string(x)
+	case pgtype.Numeric:
+		f, e := utils.NumericToFloat64(x)
+		if e == nil {
+			return strconv.FormatFloat(f, 'f', -1, 64)
+		}
 	}
+	return ""
 }
