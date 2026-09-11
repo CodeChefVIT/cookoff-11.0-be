@@ -49,7 +49,7 @@ func SubmitCode(c echo.Context) error {
 	}
 
 	//make payload
-	payload, err := submission.CreateSubmissionPayload(req.SourceCode, req.LanguageID, testcases)
+	payload, err := submission.CreateBatchSubmissionPayload(req.SourceCode, req.LanguageID, testcases)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -57,12 +57,12 @@ func SubmitCode(c echo.Context) error {
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	//send the payload
-	resp, err := submission.SendSubmissionPayload(client, payload)
+	resp, err := submission.SendBatchSubmissionPayload(client, payload)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	defer func() { _ = resp.Body.Close() }()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failure at Judge0"})

@@ -72,41 +72,23 @@ func (q *Queries) DeleteTestCase(ctx context.Context, id uuid.UUID) (uuid.UUID, 
 }
 
 const getAllTestCasesByQuestion = `-- name: GetAllTestCasesByQuestion :many
-SELECT
-    id,
-    memory,
-    expected_output,
-    input,
-    hidden,
-    runtime,
-    question_id
-FROM testcases
+SELECT id, expected_output, memory, input, hidden, runtime, question_id FROM testcases
 WHERE question_id = $1
 `
 
-type GetAllTestCasesByQuestionRow struct {
-	ID             uuid.UUID
-	Memory         pgtype.Numeric
-	ExpectedOutput string
-	Input          string
-	Hidden         bool
-	Runtime        pgtype.Numeric
-	QuestionID     uuid.UUID
-}
-
-func (q *Queries) GetAllTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]GetAllTestCasesByQuestionRow, error) {
+func (q *Queries) GetAllTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]Testcase, error) {
 	rows, err := q.db.Query(ctx, getAllTestCasesByQuestion, questionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetAllTestCasesByQuestionRow
+	var items []Testcase
 	for rows.Next() {
-		var i GetAllTestCasesByQuestionRow
+		var i Testcase
 		if err := rows.Scan(
 			&i.ID,
-			&i.Memory,
 			&i.ExpectedOutput,
+			&i.Memory,
 			&i.Input,
 			&i.Hidden,
 			&i.Runtime,
@@ -123,8 +105,7 @@ func (q *Queries) GetAllTestCasesByQuestion(ctx context.Context, questionID uuid
 }
 
 const getPublicTestCasesByQuestion = `-- name: GetPublicTestCasesByQuestion :many
-SELECT id, expected_output, memory, input, hidden, runtime, question_id
-FROM testcases
+SELECT id, expected_output, memory, input, hidden, runtime, question_id FROM testcases
 WHERE question_id = $1 AND hidden = false
 ORDER BY id ASC
 `
@@ -158,8 +139,8 @@ func (q *Queries) GetPublicTestCasesByQuestion(ctx context.Context, questionID u
 }
 
 const getTestCaseByID = `-- name: GetTestCaseByID :one
-SELECT id, expected_output, memory, input, hidden, runtime, question_id
-FROM testcases WHERE id = $1
+SELECT id, expected_output, memory, input, hidden, runtime, question_id FROM testcases
+WHERE id = $1
 `
 
 func (q *Queries) GetTestCaseByID(ctx context.Context, id uuid.UUID) (Testcase, error) {

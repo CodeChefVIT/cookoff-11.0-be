@@ -24,31 +24,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// judge0StatusMap mirrors docs/LLD.MD 2.6's status-code table: Judge0's
-// numeric status.id -> the human string we store in submission_results.status.
-var judge0StatusMap = map[int]string{
-	1:  "In Queue",
-	2:  "Processing",
-	3:  "success",
-	4:  "wrong answer",
-	5:  "Time Limit Exceeded",
-	6:  "Compilation error",
-	7:  "Runtime error (SIGSEGV)",
-	8:  "Runtime error (SIGXFSZ)",
-	9:  "Runtime error (SIGFPE)",
-	10: "Runtime error (SIGABRT)",
-	11: "Runtime error (NZEC)",
-	12: "Runtime error (Other)",
-	13: "Internal Error",
-	14: "Exec Format Error",
-}
 
-func mapJudge0Status(statusID int) string {
-	if s, ok := judge0StatusMap[statusID]; ok {
-		return s
-	}
-	return "Unknown"
-}
+//bro too many useless comments
+
 
 // NewServeMux wires up every registered task type this worker process can
 // handle. cmd/worker/main.go passes this mux into asynq.Server.Run. If you
@@ -93,7 +71,8 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 			submissionID, testcaseIDStr, parseErr)
 	}
 
-	status := mapJudge0Status(payload.Status.ID)
+	status:=utils.GetJudge0StatusFromID(payload.Status.ID)
+
 
 	// Judge0 sends "time" as a string like "0.045" (seconds).
 	runtimeSeconds, err := strconv.ParseFloat(payload.Time, 64)
@@ -115,7 +94,7 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 	// The schema has no per-testcase weighting yet (testcases table has no
 	// points column) -- revisit this if/when per-testcase weights are added.
 	var pointsAwarded int32
-	if status == "success" {
+	if status == utils.Judge0Accepted.GetJudge0Status() {
 		pointsAwarded = 1
 	}
 
@@ -196,13 +175,13 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 
 	var passed, failed int32
 	var maxRuntime, maxMemory float64
-	overallStatus := "success"
+	overallStatus := utils.Judge0Accepted.GetJudge0Status()
 	for _, r := range results {
-		if r.Status == "success" {
+		if r.Status == utils.Judge0Accepted.GetJudge0Status() {
 			passed++
 		} else {
 			failed++
-			if overallStatus == "success" {
+			if overallStatus == utils.Judge0Accepted.GetJudge0Status() {
 				overallStatus = r.Status
 			}
 		}
