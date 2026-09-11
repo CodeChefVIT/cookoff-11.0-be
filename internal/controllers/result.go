@@ -50,8 +50,6 @@ func GetResult(c echo.Context) error {
 			}
 		}
 	}
-
-	return nil
 }
 
 func getSubmissionResult(ctx context.Context, submissionID uuid.UUID) (dto.ResultResponse, error) {
