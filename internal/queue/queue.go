@@ -9,8 +9,8 @@ import (
 	"fmt"
 
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"github.com/hibiken/asynq"
 )
 

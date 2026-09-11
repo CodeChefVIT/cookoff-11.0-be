@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 )
 
 func TestAccessTokenCannotBeUsedAsRefreshToken(t *testing.T) {
