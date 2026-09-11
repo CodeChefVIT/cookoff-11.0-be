@@ -41,3 +41,8 @@ VALUES(
     $5
 )
 RETURNING *;
+
+-- name: EnsureAttempt :exec
+INSERT INTO attempts (id, user_id, question_id, status, is_buy_in_paid)
+VALUES ($1, $2, $3, 'bought', false)
+ON CONFLICT ON CONSTRAINT uq_attempts_user_question DO NOTHING;

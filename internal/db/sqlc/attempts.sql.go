@@ -59,6 +59,23 @@ func (q *Queries) CreateAttempt(ctx context.Context, arg CreateAttemptParams) (A
 	return i, err
 }
 
+const ensureAttempt = `-- name: EnsureAttempt :exec
+INSERT INTO attempts (id, user_id, question_id, status, is_buy_in_paid)
+VALUES ($1, $2, $3, 'bought', false)
+ON CONFLICT ON CONSTRAINT uq_attempts_user_question DO NOTHING
+`
+
+type EnsureAttemptParams struct {
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	QuestionID uuid.UUID
+}
+
+func (q *Queries) EnsureAttempt(ctx context.Context, arg EnsureAttemptParams) error {
+	_, err := q.db.Exec(ctx, ensureAttempt, arg.ID, arg.UserID, arg.QuestionID)
+	return err
+}
+
 const getAttemptForUpdate = `-- name: GetAttemptForUpdate :one
 SELECT id, user_id, question_id, status, is_buy_in_paid, attempted_at, answered_at
 FROM attempts

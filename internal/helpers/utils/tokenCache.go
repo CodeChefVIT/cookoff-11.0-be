@@ -38,7 +38,6 @@ func CloseTokenCache() {
 	logging.Infof("Token cache connection closed")
 }
 
-
 func CacheToken(ctx context.Context, token string, submissionID string, testcaseID string) error {
 
 	if TokenCache == nil {
@@ -53,7 +52,6 @@ func CacheToken(ctx context.Context, token string, submissionID string, testcase
 	}
 	return nil
 }
-
 
 func CacheTokens(ctx context.Context, submissionID string, tokenToTestcase map[string]string) error {
 	if TokenCache == nil {
@@ -74,7 +72,6 @@ func CacheTokens(ctx context.Context, submissionID string, tokenToTestcase map[s
 	}
 	return nil
 }
-
 
 func GetSubmissionIDByToken(ctx context.Context, token string) (submissionID, testcaseID string, err error) {
 	val, err := TokenCache.Get(ctx, tokenKey(token)).Result()

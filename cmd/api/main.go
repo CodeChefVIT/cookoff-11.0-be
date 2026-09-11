@@ -28,7 +28,7 @@ func main() {
 	if err := utils.LoadConfig(); err != nil {
 		logging.Fatalf("Failed to load configuration: %v", err)
 	}
-    
+
 	// Initialize Asynq queue client
 	queue.InitQueue()
 	defer queue.CloseQueue()

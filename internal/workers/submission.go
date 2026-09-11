@@ -264,12 +264,31 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		QuestionID: submission.QuestionID,
 	})
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			logging.Warnf("submission %s: no attempt row for user=%s question=%s -- skipping reward",
-				submissionID, submission.UserID, submission.QuestionID)
-			return nil
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("get attempt: %w", err)
 		}
-		return fmt.Errorf("get attempt: %w", err)
+
+		// No attempt row yet -- create one instead of dropping the reward.
+		logging.Warnf("submission %s: no attempt row for user=%s question=%s -- auto-creating one",
+			submissionID, submission.UserID, submission.QuestionID)
+
+		if ensureErr := qtx.EnsureAttempt(ctx, sqlc.EnsureAttemptParams{
+			ID:         uuid.New(),
+			UserID:     submission.UserID,
+			QuestionID: submission.QuestionID,
+		}); ensureErr != nil {
+			return fmt.Errorf("ensure attempt: %w", ensureErr)
+		}
+
+		// Re-fetch + lock: either the row we just made, or one a concurrent
+		// finalize beat us to.
+		attempt, err = qtx.GetAttemptForUpdate(ctx, sqlc.GetAttemptForUpdateParams{
+			UserID:     submission.UserID,
+			QuestionID: submission.QuestionID,
+		})
+		if err != nil {
+			return fmt.Errorf("get attempt after ensure: %w", err)
+		}
 	}
 	if attempt.Status == "answered" {
 		logging.Infof("submission %s: attempt already answered, skipping duplicate reward", submissionID)
