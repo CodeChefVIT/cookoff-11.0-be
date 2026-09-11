@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/caarlos0/env/v11"
 	"github.com/joho/godotenv"
 )
@@ -21,6 +22,9 @@ type cfg struct {
 	GoogleRedirectURI  string        `env:"GOOGLE_REDIRECT_URI"`
 	GoogleClientID     string        `env:"GOOGLE_CLIENT_ID"`
 	GoogleClientSecret string        `env:"GOOGLE_CLIENT_SECRET"`
+	GoogleAuthURL      string        `env:"GOOGLE_AUTH_URL" envDefault:"https://accounts.google.com/o/oauth2/v2/auth"`
+	GoogleTokenURL     string        `env:"GOOGLE_TOKEN_URL" envDefault:"https://oauth2.googleapis.com/token"`
+	GoogleInfoURL      string        `env:"GOOGLE_INFO_URL" envDefault:"https://oauth2.googleapis.com/tokeninfo"`
 	AccessTokenTTL     time.Duration `env:"ACCESS_TOKEN_TTL" envDefault:"15m"`
 	RefreshTokenTTL    time.Duration `env:"REFRESH_TOKEN_TTL" envDefault:"48h"`
 
@@ -55,7 +59,7 @@ var CORSOrigins []string
 
 func LoadConfig() error {
 	if err := godotenv.Load(); err != nil {
-		fmt.Println("No .env file found, continuing with environment variables")
+		logging.Infof("No .env file found, continuing with environment variables")
 	}
 
 	if err := env.Parse(&Config); err != nil {
@@ -65,7 +69,7 @@ func LoadConfig() error {
 		return fmt.Errorf("JWT_SECRET must not be empty")
 	}
 	if Config.GoogleRedirectURI == "" || Config.GoogleClientID == "" || Config.GoogleClientSecret == "" {
-		return fmt.Errorf("Google OAuth configuration is incomplete")
+		return fmt.Errorf("google OAuth configuration is incomplete")
 	}
 	if Config.AccessTokenTTL <= 0 || Config.RefreshTokenTTL <= 0 {
 		return fmt.Errorf("token TTLs must be positive")
@@ -100,6 +104,6 @@ func LoadConfig() error {
 		CORSOrigins = append(CORSOrigins, strings.TrimRight(strings.TrimSpace(Config.AdminURL), "/"))
 	}
 
-	fmt.Printf("Configuration successfully loaded\n")
+	logging.Infof("Configuration successfully loaded")
 	return nil
 }

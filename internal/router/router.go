@@ -40,5 +40,23 @@ func RegisterRoutes(e *echo.Echo) {
 	questionRoutes.GET("/round", questionController.ListByRound)
 	questionRoutes.GET("/:id", questionController.GetByID)
 	questionRoutes.GET("/:id/blocks", questionController.ListBlocks)
+	questionRoutes.GET("/:id/testcases/public", controllers.NewTestcaseController(queries).ListPublic)
+
+	adminQuestionRoutes := e.Group("/question", authenticated[0], authenticated[1], middlewares.AdminOnly)
+	adminQuestionRoutes.POST("", questionController.Create)
+	adminQuestionRoutes.PUT("/:id", questionController.Update)
+	adminQuestionRoutes.DELETE("/:id", questionController.Delete)
+	adminQuestionRoutes.POST("/:id/bounty/activate", questionController.SetBounty(true))
+	adminQuestionRoutes.POST("/:id/bounty/deactivate", questionController.SetBounty(false))
+	adminQuestionRoutes.GET("/:id/testcases", controllers.NewTestcaseController(queries).ListAllForQuestion)
+
+	testcaseController := controllers.NewTestcaseController(queries)
+	adminTestcaseRoutes := e.Group("/testcase", authenticated[0], authenticated[1], middlewares.AdminOnly)
+	adminTestcaseRoutes.GET("/:id", testcaseController.Get)
+	adminTestcaseRoutes.POST("", testcaseController.Create)
+	adminTestcaseRoutes.PUT("/:id", testcaseController.Update)
+	adminTestcaseRoutes.DELETE("/:id", testcaseController.Delete)
+
+	e.GET("/dashboard", controllers.Dashboard(queries), authenticated...)
 	e.GET("/admin/session", controllers.AdminSession(queries), authenticated[0], authenticated[1], middlewares.AdminOnly)
 }

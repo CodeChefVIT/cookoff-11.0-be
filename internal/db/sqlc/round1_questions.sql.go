@@ -26,7 +26,8 @@ SELECT
     output_format,
     sample_test_input,
     sample_test_output,
-    explanation
+    explanation,
+    bounty_active
 FROM questions
 WHERE id = $1
 `
@@ -46,6 +47,7 @@ type GetQuestionByIDRow struct {
 	SampleTestInput  []string
 	SampleTestOutput []string
 	Explanation      []string
+	BountyActive     bool
 }
 
 func (q *Queries) GetQuestionByID(ctx context.Context, id uuid.UUID) (GetQuestionByIDRow, error) {
@@ -66,6 +68,7 @@ func (q *Queries) GetQuestionByID(ctx context.Context, id uuid.UUID) (GetQuestio
 		&i.SampleTestInput,
 		&i.SampleTestOutput,
 		&i.Explanation,
+		&i.BountyActive,
 	)
 	return i, err
 }
@@ -100,7 +103,8 @@ SELECT
     output_format,
     sample_test_input,
     sample_test_output,
-    explanation
+    explanation,
+    bounty_active
 FROM questions
 WHERE round = $1
 ORDER BY title ASC, id ASC
@@ -121,6 +125,7 @@ type ListQuestionsByRoundRow struct {
 	SampleTestInput  []string
 	SampleTestOutput []string
 	Explanation      []string
+	BountyActive     bool
 }
 
 func (q *Queries) ListQuestionsByRound(ctx context.Context, round int32) ([]ListQuestionsByRoundRow, error) {
@@ -147,6 +152,7 @@ func (q *Queries) ListQuestionsByRound(ctx context.Context, round int32) ([]List
 			&i.SampleTestInput,
 			&i.SampleTestOutput,
 			&i.Explanation,
+			&i.BountyActive,
 		); err != nil {
 			return nil, err
 		}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/auth"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
@@ -17,19 +18,13 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-const (
-	googleAuthURL  = "https://accounts.google.com/o/oauth2/v2/auth"
-	googleTokenURL = "https://oauth2.googleapis.com/token"
-	googleInfoURL  = "https://oauth2.googleapis.com/tokeninfo"
-)
-
 type AuthController struct {
 	queries *sqlc.Queries
 	client  *http.Client
 }
 
 func NewAuthController(queries *sqlc.Queries) *AuthController {
-	return &AuthController{queries: queries, client: http.DefaultClient}
+	return &AuthController{queries: queries, client: &http.Client{Timeout: 5 * time.Second}}
 }
 
 func (ac *AuthController) StartGoogle(c echo.Context) error {
@@ -52,7 +47,7 @@ func (ac *AuthController) StartGoogle(c echo.Context) error {
 		"scope":         {"openid email profile"},
 		"state":         {state},
 	}
-	return c.Redirect(http.StatusFound, googleAuthURL+"?"+values.Encode())
+	return c.Redirect(http.StatusFound, utils.Config.GoogleAuthURL+"?"+values.Encode())
 }
 
 func (ac *AuthController) GoogleCallback(c echo.Context) error {
@@ -134,7 +129,7 @@ type googleIdentity struct{ Subject, Email, Name string }
 
 func (ac *AuthController) googleIdentity(ctx context.Context, code string) (googleIdentity, error) {
 	values := url.Values{"code": {code}, "client_id": {utils.Config.GoogleClientID}, "client_secret": {utils.Config.GoogleClientSecret}, "redirect_uri": {utils.Config.GoogleRedirectURI}, "grant_type": {"authorization_code"}}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, googleTokenURL, strings.NewReader(values.Encode()))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, utils.Config.GoogleTokenURL, strings.NewReader(values.Encode()))
 	if err != nil {
 		return googleIdentity{}, err
 	}
@@ -143,17 +138,17 @@ func (ac *AuthController) googleIdentity(ctx context.Context, code string) (goog
 	if err != nil {
 		return googleIdentity{}, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return googleIdentity{}, fmt.Errorf("token exchange failed")
 	}
 	var token struct {
 		IDToken string `json:"id_token"`
 	}
-	if err := json.NewDecoder(response.Body).Decode(&token); err != nil || token.IDToken == "" {
+	if decodeErr := json.NewDecoder(response.Body).Decode(&token); decodeErr != nil || token.IDToken == "" {
 		return googleIdentity{}, fmt.Errorf("missing ID token")
 	}
-	infoURL := googleInfoURL + "?" + url.Values{"id_token": {token.IDToken}}.Encode()
+	infoURL := utils.Config.GoogleInfoURL + "?" + url.Values{"id_token": {token.IDToken}}.Encode()
 	request, err = http.NewRequestWithContext(ctx, http.MethodGet, infoURL, nil)
 	if err != nil {
 		return googleIdentity{}, err
@@ -162,7 +157,7 @@ func (ac *AuthController) googleIdentity(ctx context.Context, code string) (goog
 	if err != nil {
 		return googleIdentity{}, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		return googleIdentity{}, fmt.Errorf("invalid ID token")
 	}
@@ -189,6 +184,22 @@ func (ac *AuthController) findUser(ctx context.Context, identity googleIdentity)
 		return sqlc.User{}, err
 	}
 	return user, nil
+func (ac *AuthController) findOrCreateUser(ctx context.Context, identity googleIdentity) (sqlc.User, error) {
+	googleID := identity.Subject
+	user, err := ac.queries.GetUserByGoogleID(ctx, &googleID)
+	if err == nil {
+		return user, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.User{}, err
+	}
+	id := uuid.New()
+	user, err = ac.queries.CreateGoogleUser(ctx, sqlc.CreateGoogleUserParams{ID: id, Email: identity.Email, RegNo: "oauth_" + id.String(), Role: "user", GoogleID: &googleID, Name: identity.Name})
+	var dbErr *pgconn.PgError
+	if errors.As(err, &dbErr) && dbErr.Code == "23505" {
+		return sqlc.User{}, ErrEmailAlreadyUsed
+	}
+	return user, err
 }
 
 func portalURL(portal string) string {
