@@ -14,6 +14,7 @@ import (
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/queue"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/router"
 	"github.com/labstack/echo/v4"
 	emiddleware "github.com/labstack/echo/v4/middleware"
@@ -27,6 +28,10 @@ func main() {
 	if err := utils.LoadConfig(); err != nil {
 		logging.Fatalf("Failed to load configuration: %v", err)
 	}
+    
+	// Initialize Asynq queue client
+	queue.InitQueue()
+	defer queue.CloseQueue()
 
 	// Initialize DB pool
 	db.InitDB()
