@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/auth"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/auth"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )

@@ -8,8 +8,8 @@ import (
 
 	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"

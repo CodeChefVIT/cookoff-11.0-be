@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/auth"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/auth"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"

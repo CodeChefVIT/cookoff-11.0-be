@@ -1,6 +1,6 @@
 # CookOff 11 Backend — Design Document
 
-PADH LENA PLS 
+PADH LENA PLS
 
 ---
 
@@ -9,6 +9,7 @@ PADH LENA PLS
 ## 1.1 Purpose
 
 The system manages the end-to-end lifecycle of a coding contest:
+
 - User authentication through Google OAuth (participants, admins)
 - Question and testcase management
 - Code submission and asynchronous judging via **Judge0**
@@ -17,22 +18,20 @@ The system manages the end-to-end lifecycle of a coding contest:
 - Admin controls (ban/unban, round upgrades)
 - **Round 1 — Scratch/visual round**: a block-based ("Scratch"-style) question format, distinct from the Judge0 code path, where users assemble `visual_blocks` into a solution and spend/earn in-contest currency (`users.balance`) via each question's `buy_in`/`reward`
 
-
-
 ## 1.2 Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Language | Go |
-| HTTP framework | [Echo v4](https://echo.labstack.com) |
-| Primary datastore | PostgreSQL |
-| Cache / ephemeral store | Redis |
-| Async job queue | [Asynq](https://github.com/hibiken/asynq) (Redis-backed) |
-| Code execution | Judge0 (external self-hosted service) |
-| DB access | SQLC (type-safe generated queries) + `pgx/v5` driver |
-| Migrations | Goose |
-| Auth | Google OAuth 2.0 + JWT (access + refresh tokens via cookies) |
-| Containerization | Docker / docker-compose, Nginx reverse proxy |
+| Layer                   | Technology                                                   |
+| ----------------------- | ------------------------------------------------------------ |
+| Language                | Go                                                           |
+| HTTP framework          | [Echo v4](https://echo.labstack.com)                         |
+| Primary datastore       | PostgreSQL                                                   |
+| Cache / ephemeral store | Redis                                                        |
+| Async job queue         | [Asynq](https://github.com/hibiken/asynq) (Redis-backed)     |
+| Code execution          | Judge0 (external self-hosted service)                        |
+| DB access               | SQLC (type-safe generated queries) + `pgx/v5` driver         |
+| Migrations              | Goose                                                        |
+| Auth                    | Google OAuth 2.0 + JWT (access + refresh tokens via cookies) |
+| Containerization        | Docker / docker-compose, Nginx reverse proxy                 |
 
 ## 1.3 System Context
 
@@ -51,6 +50,7 @@ flowchart LR
 ```
 
 The system is split into **two deployable Go binaries** sharing the same codebase:
+
 1. **API service** (`cmd/api`) — stateless HTTP server, handles all REST endpoints, and enqueues Judge0 callback events.
 2. **Worker service** (`cmd/worker`) — Asynq consumer that processes Judge0 callback events off Redis and persists results to Postgres.
 
@@ -58,17 +58,17 @@ This decouples the latency-sensitive HTTP path from the (potentially bursty) job
 
 ## 1.4 Major Components
 
-| Component | Responsibility |
-|---|---|
-| **Router** (`pkg/router`) | Declares route groups: public, authenticated, admin-only, question, testcase |
-| **Middlewares** (`pkg/middlewares`) | JWT verification, ban check, admin-only gate, global rate limiting |
-| **Controllers** (`pkg/controllers`) | Request handlers — one file per resource/feature |
-| **Helpers** (`pkg/helpers`) | Auth (JWT/bcrypt), submission-building logic, validation, caches, timers, config |
-| **DTOs** (`pkg/dto`) | Request/response and Judge0 payload shapes |
-| **DB layer** (`pkg/db`) | SQLC-generated queries and models |
-| **Queue** (`pkg/queue`) | Asynq client/server bootstrap |
-| **Workers** (`pkg/workers`) | Asynq task handlers (Judge0 callback processing) |
-| **Database** (`database/`) | Goose migrations (schema) + SQL query definitions consumed by SQLC |
+| Component                           | Responsibility                                                                   |
+| ----------------------------------- | -------------------------------------------------------------------------------- |
+| **Router** (`pkg/router`)           | Declares route groups: public, authenticated, admin-only, question, testcase     |
+| **Middlewares** (`pkg/middlewares`) | JWT verification, ban check, admin-only gate, global rate limiting               |
+| **Controllers** (`pkg/controllers`) | Request handlers — one file per resource/feature                                 |
+| **Helpers** (`pkg/helpers`)         | Auth (JWT/bcrypt), submission-building logic, validation, caches, timers, config |
+| **DTOs** (`pkg/dto`)                | Request/response and Judge0 payload shapes                                       |
+| **DB layer** (`pkg/db`)             | SQLC-generated queries and models                                                |
+| **Queue** (`pkg/queue`)             | Asynq client/server bootstrap                                                    |
+| **Workers** (`pkg/workers`)         | Asynq task handlers (Judge0 callback processing)                                 |
+| **Database** (`database/`)          | Goose migrations (schema) + SQL query definitions consumed by SQLC               |
 
 ## 1.5 Key Architectural Flow — Code Submission
 
@@ -113,11 +113,10 @@ sequenceDiagram
 
 ## 1.6 Non-Functional Characteristics
 
-
 - **Statelessness**: API pods don't hold session state — JWT access/refresh tokens (cookie-based) carry identity; horizontally scalable behind Nginx.
 - **Ban / access gating**: `BanCheckUser` and round-qualification checks (`VerifyRoundAccess`) enforce contest fairness before allowing submissions.
 - **Decoupled execution**: Judge0 is a separate, independently scaled execution sandbox; the Go backend never executes untrusted user code itself.
-- **Config**: fully env-driven (`pkg/helpers/utils/config.go`), validated with required fields at boot (fails fast if misconfigured).
+- **Config**: fully env-driven (`pkg/helpers/helpers/util/config.go`), validated with required fields at boot (fails fast if misconfigured).
 - **Observability**: centralized Zap-based structured logging with environment-specific encoders and HTTP route attributes (method, uri, status, latency, ip, error).
 
 ## 1.6.1 Authentication Architecture — Google OAuth
@@ -154,4 +153,3 @@ flowchart TB
 Services declared in `docker-compose.yml`: `postgres`, `redis`, `api` (built from `Dockerfile`), `worker` (built from `Dockerfile.worker`), and `nginx` as reverse proxy in front of the API.
 
 ---
-
