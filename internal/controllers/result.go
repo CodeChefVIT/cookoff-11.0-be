@@ -41,7 +41,8 @@ func GetResult(c echo.Context) error {
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get submission status"})
 			}
 
-			if *status!=utils.Judge0InQueue.GetJudge0Status() || *status!=utils.Judge0Processing.GetJudge0Status(){
+			//other status stuff, im not sure abt
+			if *status!=utils.Judge0InQueue.GetJudge0Status() && *status!=utils.Judge0Processing.GetJudge0Status(){
 				result, err := getSubmissionResult(ctx, submissionID)
 				if err!=nil{
 					return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
