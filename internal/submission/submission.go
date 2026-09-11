@@ -17,9 +17,7 @@ import (
 
 //Contains stuff only related to submission request made to judge0
 
-
-
-//returns a payload for a single submission
+// returns a payload for a single submission
 func CreateSubmissionPayload(sourceCode string, languageID int, testCase sqlc.Testcase) ([]byte, error) {
 	execution_timeout_t, err := testCase.Runtime.Float64Value()
 	if err != nil {
@@ -40,7 +38,6 @@ func CreateSubmissionPayload(sourceCode string, languageID int, testCase sqlc.Te
 		ExecutionTimeout: execution_timeout, //would prefer ExecutionTimeout over Runtime
 	}
 
-
 	payload, err := json.Marshal(submission)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal the payload: %w", err)
@@ -49,7 +46,6 @@ func CreateSubmissionPayload(sourceCode string, languageID int, testCase sqlc.Te
 	return payload, nil
 
 }
-
 
 // returns a payload for a batch submission of all the testcases
 func CreateBatchSubmissionPayload(sourceCode string, languageID int, testCases []sqlc.Testcase) ([]byte, error) {
@@ -119,9 +115,6 @@ func SendBatchSubmissionPayload(client *http.Client, payload []byte) (*http.Resp
 	return resp, nil
 
 }
-
-
-
 
 // sends a payload to judge0 for evaluation with wait=true, returns the response immediately
 func SendSubmissionPayloadWithWait(client *http.Client, payload []byte) (*http.Response, error) {
