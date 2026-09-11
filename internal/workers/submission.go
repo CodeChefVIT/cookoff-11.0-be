@@ -24,9 +24,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-
 //bro too many useless comments
-
 
 // NewServeMux wires up every registered task type this worker process can
 // handle. cmd/worker/main.go passes this mux into asynq.Server.Run. If you
@@ -71,8 +69,7 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 			submissionID, testcaseIDStr, parseErr)
 	}
 
-	status:=utils.GetJudge0StatusFromID(payload.Status.ID)
-
+	status := utils.GetJudge0StatusFromID(payload.Status.ID)
 
 	// Judge0 sends "time" as a string like "0.045" (seconds).
 	runtimeSeconds, err := strconv.ParseFloat(payload.Time, 64)

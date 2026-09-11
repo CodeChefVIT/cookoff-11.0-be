@@ -1,25 +1,25 @@
 package controllers
-import(
-	"net/http"
-	"io"
-	"encoding/json"
+
+import (
 	"encoding/base64"
+	"encoding/json"
+	"io"
+	"net/http"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/submission"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
-
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/submission"
 )
 
 func RunCode(c echo.Context) error {
 
 	var req dto.SubmissionRequest
-	
+
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
@@ -35,7 +35,6 @@ func RunCode(c echo.Context) error {
 	submissionID := uuid.New()
 	logging.Infof("Created submission ID: %v", submissionID)
 
-
 	ctx := c.Request().Context()
 
 	//fetch testcases from db
@@ -46,7 +45,6 @@ func RunCode(c echo.Context) error {
 
 	result := make([]dto.Judge0CallbackPayload, len(testcases))
 
-
 	client := &http.Client{}
 
 	for i, testcase := range testcases {
@@ -55,7 +53,6 @@ func RunCode(c echo.Context) error {
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-
 
 		resp, err := submission.SendSubmissionPayloadWithWait(client, payload)
 		if err != nil {
@@ -73,34 +70,31 @@ func RunCode(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Error reading response body"})
 		}
 
-		if err = json.Unmarshal(body, &result[i]); err!=nil{
+		if err = json.Unmarshal(body, &result[i]); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to unmarshal response"})
 		}
 
-		if result[i].StdOut!=nil{
+		if result[i].StdOut != nil {
 			decoded, _ := base64.StdEncoding.DecodeString(*result[i].StdOut)
 			*result[i].StdOut = string(decoded)
 		}
-		if result[i].StdErr!=nil{
+		if result[i].StdErr != nil {
 			decoded, _ := base64.StdEncoding.DecodeString(*result[i].StdErr)
 			*result[i].StdErr = string(decoded)
 		}
-		if result[i].Message!=nil{
+		if result[i].Message != nil {
 			decoded, _ := base64.StdEncoding.DecodeString(*result[i].Message)
 			*result[i].Message = string(decoded)
 		}
 	}
 
-
 	return c.JSON(http.StatusOK, result)
 }
 
-
 func RunCustom(c echo.Context) error {
-	
 
 	var req dto.CustomSubmissionRequest
-	
+
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
@@ -108,9 +102,8 @@ func RunCustom(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-
 	//dummy testcase
-	testcase:=sqlc.Testcase{
+	testcase := sqlc.Testcase{
 		//ID             uuid.UUID
 		//ExpectedOutput string
 		//Memory         pgtype.Numeric
@@ -153,8 +146,6 @@ func RunCustom(c echo.Context) error {
 	*result.StdErr = string(decoded)
 	decoded, _ = base64.StdEncoding.DecodeString(*result.Message)
 	*result.Message = string(decoded)
-
-
 
 	return c.JSON(http.StatusOK, result)
 }
