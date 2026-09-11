@@ -12,6 +12,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"io"
 	"net/http"
+	"time"
 )
 
 // do logging
@@ -53,7 +54,7 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 10 * time.Second}
 
 	//send the payload
 	resp, err := submission.SendSubmissionPayload(client, payload)

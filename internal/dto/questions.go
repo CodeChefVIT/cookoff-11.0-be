@@ -18,6 +18,71 @@ type QuestionResponse struct {
 	SampleTestInput  []string  `json:"sample_test_input,omitempty"`
 	SampleTestOutput []string  `json:"sample_test_output,omitempty"`
 	Explanation      []string  `json:"explanation,omitempty"`
+	BountyActive     bool      `json:"bounty_active"`
+}
+
+type QuestionRequest struct {
+	Description      string   `json:"description" validate:"required"`
+	Title            string   `json:"title" validate:"required"`
+	Type             string   `json:"type" validate:"required"`
+	InputFormat      []string `json:"input_format"`
+	BuyIn            *float64 `json:"buy_in"`
+	Reward           *float64 `json:"reward"`
+	Points           int32    `json:"points" validate:"gte=0"`
+	Round            int32    `json:"round" validate:"gte=0"`
+	Constraints      []string `json:"constraints"`
+	OutputFormat     []string `json:"output_format"`
+	SampleTestInput  []string `json:"sample_test_input"`
+	SampleTestOutput []string `json:"sample_test_output"`
+	Explanation      []string `json:"explanation"`
+	BountyActive     bool     `json:"bounty_active"`
+}
+
+type TestcaseRequest struct {
+	ExpectedOutput string  `json:"expected_output" validate:"required"`
+	Memory         float64 `json:"memory" validate:"gte=0"`
+	Input          string  `json:"input" validate:"required"`
+	Hidden         bool    `json:"hidden"`
+	Runtime        float64 `json:"runtime" validate:"gte=0"`
+	QuestionID     string  `json:"question_id" validate:"required,uuid"`
+}
+
+type TestcaseUpdateRequest struct {
+	ExpectedOutput *string  `json:"expected_output"`
+	Memory         *float64 `json:"memory" validate:"omitempty,gte=0"`
+	Input          *string  `json:"input"`
+	Hidden         *bool    `json:"hidden"`
+	Runtime        *float64 `json:"runtime" validate:"omitempty,gte=0"`
+	QuestionID     *string  `json:"question_id" validate:"omitempty,uuid"`
+}
+
+type TestcaseResponse struct {
+	ID             uuid.UUID `json:"id"`
+	QuestionID     uuid.UUID `json:"question_id"`
+	ExpectedOutput string    `json:"expected_output"`
+	Input          string    `json:"input"`
+	Memory         string    `json:"memory"`
+	Runtime        string    `json:"runtime"`
+	Hidden         bool      `json:"hidden"`
+}
+
+type DashboardQuestion struct {
+	ID            uuid.UUID `json:"id"`
+	Title         string    `json:"title"`
+	Points        int32     `json:"points"`
+	Round         int32     `json:"round"`
+	AttemptStatus string    `json:"attempt_status"`
+}
+
+type DashboardResponse struct {
+	ID             uuid.UUID           `json:"id"`
+	Name           string              `json:"name"`
+	Email          string              `json:"email"`
+	Balance        string              `json:"balance"`
+	Score          string              `json:"score"`
+	RoundQualified int32               `json:"round_qualified"`
+	Questions      []DashboardQuestion `json:"questions"`
+	AttemptTotals  map[string]int      `json:"attempt_totals"`
 }
 
 type VisualBlockResponse struct {

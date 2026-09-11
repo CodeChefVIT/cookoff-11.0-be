@@ -9,7 +9,9 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-var Log *zap.SugaredLogger
+// Log starts as a no-op logger so configuration and migration commands can
+// safely log before the API process explicitly initializes Zap.
+var Log = zap.NewNop().Sugar()
 
 func InitLogger() {
 	var config zap.Config

@@ -13,7 +13,8 @@ SELECT
     output_format,
     sample_test_input,
     sample_test_output,
-    explanation
+    explanation,
+    bounty_active
 FROM questions
 WHERE round = $1
 ORDER BY title ASC, id ASC;
@@ -33,7 +34,8 @@ SELECT
     output_format,
     sample_test_input,
     sample_test_output,
-    explanation
+    explanation,
+    bounty_active
 FROM questions
 WHERE id = $1;
 
