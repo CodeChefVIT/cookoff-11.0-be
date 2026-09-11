@@ -2,10 +2,7 @@
 INSERT INTO submissions (
 	id,
 	question_id,
-	-- testcases_passed,
-	-- testcases_failed,
 	runtime,
-	-- submission_time,
 	source_code,
 	language_id,
 	description,
@@ -18,4 +15,9 @@ INSERT INTO submissions (
 
 -- name: GetSubmissionByID :one
 SELECT * FROM submissions
+WHERE id = $1;
+
+
+-- name: GetSubmissionStatusByID :one
+SELECT status FROM submissions
 WHERE id = $1;

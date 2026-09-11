@@ -1,16 +1,18 @@
 package controllers
 
 import (
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/submission"
-
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
+
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/submission"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -28,14 +30,18 @@ func SubmitCode(c echo.Context) error {
 	}
 
 	//get user id here
-	claims, ok := c.Get("user").(*middlewares.JWTClaims)
-	if !ok {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token"})
+	userIDStr, ok := c.Get(middlewares.UserIDKey).(string)
+	if !ok || userIDStr == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	}
-	userID, err := uuid.Parse(claims.UserID)
 
-	//auth stuff
-	//here
+	// userID is set by middlewares.VerifyJWTMiddleware (applied to this route
+	// in router.go), which validates the JWT cookie and calls
+	// c.Set(middlewares.UserIDKey, claims.UserID) before this handler runs.
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid user id"})
+	}
 
 	questionID, err := uuid.Parse(req.QuestionID)
 	if err != nil {
@@ -58,15 +64,15 @@ func SubmitCode(c echo.Context) error {
 	}
 
 	//make payload
-	payload, err := submission.CreateSubmissionPayload(req.SourceCode, req.LanguageID, testcases)
+	payload, err := submission.CreateBatchSubmissionPayload(req.SourceCode, req.LanguageID, testcases)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 10 * time.Second}
 
 	//send the payload
-	resp, err := submission.SendSubmissionPayload(client, payload)
+	resp, err := submission.SendBatchSubmissionPayload(client, payload)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -91,10 +97,25 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to decode body"})
 	}
 
-	/*
-		for i, t:= range tokens{
-			//add the token to the queue and all.....
-		}*/
+	if len(tokens) != len(testcases) {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "judge0 returned a different number of tokens than testcases submitted",
+		})
+	}
+
+	tokenToTestcase := make(map[string]string, len(tokens))
+	for i, t := range tokens {
+		if t.Token == "" {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "judge0 returned an empty token for one or more testcases",
+			})
+		}
+		tokenToTestcase[t.Token] = testcases[i].ID.String()
+	}
+
+	if err = utils.CacheTokens(ctx, submissionID.String(), tokenToTestcase); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to cache submission tokens"})
+	}
 
 	err = db.Queries.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
 		UserID:     userID,
@@ -102,6 +123,7 @@ func SubmitCode(c echo.Context) error {
 		QuestionID: questionID,
 		SourceCode: req.SourceCode,
 		LanguageID: int32(req.LanguageID), // #nosec G115
+
 	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create submission in database"})

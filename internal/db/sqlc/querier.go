@@ -13,25 +13,40 @@ import (
 
 type Querier interface {
 	CreateAttempt(ctx context.Context, arg CreateAttemptParams) (Attempt, error)
+	CreateGoogleUser(ctx context.Context, arg CreateGoogleUserParams) (User, error)
+	CreateQuestion(ctx context.Context, arg CreateQuestionParams) (Question, error)
 	CreateSubmission(ctx context.Context, arg CreateSubmissionParams) error
 	CreateSubmissionResult(ctx context.Context, arg CreateSubmissionResultParams) (SubmissionResult, error)
 	CreateTestCase(ctx context.Context, arg CreateTestCaseParams) (Testcase, error)
 	CreateVisualSubmission(ctx context.Context, arg CreateVisualSubmissionParams) (Submission, error)
-	GetAllTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]GetAllTestCasesByQuestionRow, error)
+	DeleteQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	DeleteTestCase(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	GetAllTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]Testcase, error)
 	GetAttemptForUpdate(ctx context.Context, arg GetAttemptForUpdateParams) (Attempt, error)
+	GetPublicTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]Testcase, error)
 	GetQuestionBuyIn(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
 	GetQuestionByID(ctx context.Context, id uuid.UUID) (GetQuestionByIDRow, error)
+	GetQuestionForUser(ctx context.Context, arg GetQuestionForUserParams) (GetQuestionForUserRow, error)
 	GetQuestionReward(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
 	GetRoundOneVisualQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submission, error)
 	GetSubmissionResults(ctx context.Context, submissionID uuid.UUID) ([]SubmissionResult, error)
+	GetSubmissionStatusByID(ctx context.Context, id uuid.UUID) (*string, error)
+	GetTestCaseByID(ctx context.Context, id uuid.UUID) (Testcase, error)
 	GetUserBalanceForUpdate(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
+	GetUserByGoogleID(ctx context.Context, googleID *string) (User, error)
+	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserScoreForUpdate(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
+	ListDashboardQuestions(ctx context.Context, id uuid.UUID) ([]ListDashboardQuestionsRow, error)
 	ListQuestionsByRound(ctx context.Context, round int32) ([]ListQuestionsByRoundRow, error)
+	ListQuestionsForUser(ctx context.Context, id uuid.UUID) ([]ListQuestionsForUserRow, error)
 	ListVisualBlocksByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualBlock, error)
 	ListVisualSolutionsByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualSolution, error)
+	SetQuestionBountyActive(ctx context.Context, arg SetQuestionBountyActiveParams) (Question, error)
 	UpdateAttemptStatus(ctx context.Context, arg UpdateAttemptStatusParams) error
+	UpdateQuestion(ctx context.Context, arg UpdateQuestionParams) (Question, error)
 	UpdateSubmissionStatus(ctx context.Context, arg UpdateSubmissionStatusParams) error
+	UpdateTestCase(ctx context.Context, arg UpdateTestCaseParams) (Testcase, error)
 	UpdateUserBalance(ctx context.Context, arg UpdateUserBalanceParams) error
 	UpdateUserScore(ctx context.Context, arg UpdateUserScoreParams) error
 }

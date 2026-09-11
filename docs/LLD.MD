@@ -28,36 +28,36 @@ database/
 
 Root-level middleware: global rate limiter (10 req/s) → public routes → `api` group (`VerifyJWTMiddleware` → `BanCheckUser`) → domain sub-routers.
 
-| Method | Path | Auth | Handler |
-|---|---|---|---|
-| GET | `/ping` | none | `Ping` |
-| PUT | `/callback` | none (Judge0 → server) | `CallbackUrl` |
-| GET | `/docs` | none | `Docs` |
-| POST | `/signup` | none | `Signup` |
-| POST | `/login` | none | `Login` |
-| POST | `/refreshToken` | none | `RefreshToken` |
-| POST | `/logout` | JWT | `Logout` |
-| POST | `/submit` | JWT + ban check | `SubmitCode` |
-| POST | `/runcode` | JWT + ban check | `RunCode` |
-| POST | `/runcustom` | JWT + ban check | `RunCustom` |
-| GET | `/result/:submission_id` | JWT + ban check | `GetResult` |
-| GET | `/dashboard` | JWT + ban check | `LoadDashboard` |
-| GET | `/getTime` | JWT + ban check | `GetTime` |
-| GET | `/question/round` | JWT + ban check | `GetQuestionsByRound` |
-| GET/POST/PUT/DELETE | `/question[/:id]` | JWT + Admin + ban check | question CRUD |
-| POST | `/question/:id/bounty/activate` \| `/deactivate` | JWT + Admin | bounty toggles |
-| GET | `/testcase/:id`, `/testcase` | JWT + ban check | testcase reads |
-| GET | `/question/:id/testcases[/public]` | JWT + ban check | testcase-by-question reads |
-| POST/PUT/DELETE | `/testcase[/:id]` | JWT + Admin | testcase CRUD |
-| GET | `/admin/users` | JWT + Admin | `GetAllUsers` |
-| POST | `/admin/users/:id/ban` \| `/unban` \| `/upgrade` | JWT + Admin | user moderation |
-| GET | `/admin/users/:id/submissions` | JWT + Admin | `GetUserSubmissions` |
-| GET | `/admin/leaderboard` | JWT + Admin | `GetLeaderboard` |
-| GET | `/admin/analytics` | JWT + Admin | `GetAnalytics` |
-| POST | `/admin/setTime` \| `/updateTime` | JWT + Admin | round timer config |
-| GET | `/admin/startRound` \| `/resetRound` | JWT + Admin | round control |
+| Method              | Path                                             | Auth                    | Handler                    |
+| ------------------- | ------------------------------------------------ | ----------------------- | -------------------------- |
+| GET                 | `/ping`                                          | none                    | `Ping`                     |
+| PUT                 | `/callback`                                      | none (Judge0 → server)  | `CallbackUrl`              |
+| GET                 | `/docs`                                          | none                    | `Docs`                     |
+| POST                | `/signup`                                        | none                    | `Signup`                   |
+| POST                | `/login`                                         | none                    | `Login`                    |
+| POST                | `/refreshToken`                                  | none                    | `RefreshToken`             |
+| POST                | `/logout`                                        | JWT                     | `Logout`                   |
+| POST                | `/submit`                                        | JWT + ban check         | `SubmitCode`               |
+| POST                | `/runcode`                                       | JWT + ban check         | `RunCode`                  |
+| POST                | `/runcustom`                                     | JWT + ban check         | `RunCustom`                |
+| GET                 | `/result/:submission_id`                         | JWT + ban check         | `GetResult`                |
+| GET                 | `/dashboard`                                     | JWT + ban check         | `LoadDashboard`            |
+| GET                 | `/getTime`                                       | JWT + ban check         | `GetTime`                  |
+| GET                 | `/question/round`                                | JWT + ban check         | `GetQuestionsByRound`      |
+| GET/POST/PUT/DELETE | `/question[/:id]`                                | JWT + Admin + ban check | question CRUD              |
+| POST                | `/question/:id/bounty/activate` \| `/deactivate` | JWT + Admin             | bounty toggles             |
+| GET                 | `/testcase/:id`, `/testcase`                     | JWT + ban check         | testcase reads             |
+| GET                 | `/question/:id/testcases[/public]`               | JWT + ban check         | testcase-by-question reads |
+| POST/PUT/DELETE     | `/testcase[/:id]`                                | JWT + Admin             | testcase CRUD              |
+| GET                 | `/admin/users`                                   | JWT + Admin             | `GetAllUsers`              |
+| POST                | `/admin/users/:id/ban` \| `/unban` \| `/upgrade` | JWT + Admin             | user moderation            |
+| GET                 | `/admin/users/:id/submissions`                   | JWT + Admin             | `GetUserSubmissions`       |
+| GET                 | `/admin/leaderboard`                             | JWT + Admin             | `GetLeaderboard`           |
+| GET                 | `/admin/analytics`                               | JWT + Admin             | `GetAnalytics`             |
+| POST                | `/admin/setTime` \| `/updateTime`                | JWT + Admin             | round timer config         |
+| GET                 | `/admin/startRound` \| `/resetRound`             | JWT + Admin             | round control              |
 
-> **Middleware order matters**: for `BanCheckUser` to work it must run *after* `VerifyJWTMiddleware` sets the user ID in Echo's context — this ordering constraint is explicitly commented in the source.
+> **Middleware order matters**: for `BanCheckUser` to work it must run _after_ `VerifyJWTMiddleware` sets the user ID in Echo's context — this ordering constraint is explicitly commented in the source.
 
 ## 2.3 Data Model (ERD)
 
@@ -156,17 +156,15 @@ erDiagram
     }
 ```
 
-
-
 ## 2.1 Redis Key Design
 
-| Key pattern | Type | Purpose | Set by | Consumed / cleared by |
-|---|---|---|---|---|
-| `token:<judge0_token>` | string | Maps a Judge0 token → `"submissionID:testcaseID"` | `SubmitCode` | `ProcessJudge0CallbackTask` (read then `DeleteToken`) |
-| `sub:<submissionID>:tokens` | set | Tracks outstanding Judge0 tokens for a submission | `SubmitCode` (SAdd) | Worker decrements via `GetTokenCount`; triggers final `UpdateSubmission` at 0 |
-| access/refresh tokens | JWT (stateless, cookie) | Auth | `auth.CreateAccessToken` / `CreateRefreshToken` | `VerifyJWTMiddleware` |
+| Key pattern                 | Type                    | Purpose                                           | Set by                                          | Consumed / cleared by                                                         |
+| --------------------------- | ----------------------- | ------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------- |
+| `token:<judge0_token>`      | string                  | Maps a Judge0 token → `"submissionID:testcaseID"` | `SubmitCode`                                    | `ProcessJudge0CallbackTask` (read then `DeleteToken`)                         |
+| `sub:<submissionID>:tokens` | set                     | Tracks outstanding Judge0 tokens for a submission | `SubmitCode` (SAdd)                             | Worker decrements via `GetTokenCount`; triggers final `UpdateSubmission` at 0 |
+| access/refresh tokens       | JWT (stateless, cookie) | Auth                                              | `auth.CreateAccessToken` / `CreateRefreshToken` | `VerifyJWTMiddleware`                                                         |
 
-`pkg/helpers/utils/tokenCache.go` centralizes the Redis client used purely for the Judge0 token↔submission map (`TokenCache`), separate from the general `RedisClient` used for other caching.
+`pkg/helpers/helpers/util/tokenCache.go` centralizes the Redis client used purely for the Judge0 token↔submission map (`TokenCache`), separate from the general `RedisClient` used for other caching.
 
 ## 2.2 Authentication and Authorization
 
@@ -179,6 +177,7 @@ The resulting application session uses the existing access/refresh JWT cookies, 
 ### 2.2.1 Google OAuth 2.0 Flow
 
 The backend uses the OAuth 2.0 authorization-code flow. The browser is redirected to Google, Google authenticates the user, and Google redirects the browser back to the backend callback endpoint.
+
 ```mermaid
 sequenceDiagram
     participant U as User Browser
@@ -219,12 +218,12 @@ sequenceDiagram
 Google's stable user identifier is stored in users.google_id.
 
 users
- ├── id              UUID PK
- ├── email           TEXT UNIQUE
- ├── google_id       TEXT UNIQUE
- ├── role            TEXT
- ├── round_qualified INT
- └── ...
+├── id UUID PK
+├── email TEXT UNIQUE
+├── google_id TEXT UNIQUE
+├── role TEXT
+├── round_qualified INT
+└── ...
 
 A CookOff account is therefore created through Google OAuth. The backend must not store a Google password or Google OAuth access token as the user's application password.
 
@@ -350,22 +349,22 @@ sequenceDiagram
 3. Parse `question_id` → UUID; return `400` on failure.
 4. `auth.VerifyRoundAccess(ctx, userID, questionID)` checks the user's `round_qualified` against the question's `round`; return `403` if not qualified.
 5. **(New)** Look up `question_attempts` for `(userID, questionID)`:
+   - No row, or `status = 'available'` → the question hasn't been bought yet → **402/403** `"question not purchased — call /question/:id/attempt first"`.
+   - Alternatively, some teams may choose to auto-charge `buy_in` inline here instead of requiring a separate `/attempt` call. Either way, the balance check in §2.8.3 applies.
+   - `status = 'bought'` or `status = 'answered'` → proceed. An already-`answered` question can still be resubmitted for practice; it just won't pay out again, per §2.6.
 
-   * No row, or `status = 'available'` → the question hasn't been bought yet → **402/403** `"question not purchased — call /question/:id/attempt first"`.
-   * Alternatively, some teams may choose to auto-charge `buy_in` inline here instead of requiring a separate `/attempt` call. Either way, the balance check in §2.8.3 applies.
-   * `status = 'bought'` or `status = 'answered'` → proceed. An already-`answered` question can still be resubmitted for practice; it just won't pay out again, per §2.6.
 6. Generate a fresh `submissionID` (`uuid.New()`).
 7. Fetch all the test cases and generate a payload with `CreateSubmissionPayload(sourceCode string, languageID int, testCases []db.TestCase)`:
+   - Computes a language-specific runtime multiplier (`RuntimeMut`).
+   - Base64-encodes source/stdin/expected-output per Judge0's batch API contract.
+   - Builds a `Judge0Submission` per testcase, each carrying the shared `CallbackURL`.
 
-   * Computes a language-specific runtime multiplier (`RuntimeMut`).
-   * Base64-encodes source/stdin/expected-output per Judge0's batch API contract.
-   * Builds a `Judge0Submission` per testcase, each carrying the shared `CallbackURL`.
 8. POST the batch payload to `Judge0URI/submissions/batch?base64_encoded=true` via `submissions.SendSubmissionPayload`.
 9. On `201 Created`, decode the returned `[]Token`.
 10. For each token:
+    - Cache `token:<token> -> "<submissionID>:<testcaseID>"`.
+    - Add the token to the `sub:<submissionID>:tokens` Redis set.
 
-    * Cache `token:<token> -> "<submissionID>:<testcaseID>"`.
-    * Add the token to the `sub:<submissionID>:tokens` Redis set.
 11. Persist the submission row (`CreateSubmission` SQLC query) with the initial/default status.
 12. Respond `200 {submission_id}` to the client immediately. Result population (and the reward/status hook) happens asynchronously per §2.6.
 
@@ -495,9 +494,9 @@ flowchart LR
     Route -->|no| H
 ```
 
-* `VerifyJWTMiddleware` reads the `access_token` cookie, parses/validates the JWT with `auth.AccessTokenClaims`, and sets `userID` + lowercase `role` into Echo's request context.
-* `BanCheckUser` re-fetches the user row from Postgres per request to check the live `is_banned` flag. This is not cached, ensuring a ban takes effect immediately, at the cost of one DB round-trip per authenticated request.
-* `AdminOnly` is purely a context-role check with no DB call. It is applied on top of the above two for `/admin/*` and admin-only question/testcase routes.
+- `VerifyJWTMiddleware` reads the `access_token` cookie, parses/validates the JWT with `auth.AccessTokenClaims`, and sets `userID` + lowercase `role` into Echo's request context.
+- `BanCheckUser` re-fetches the user row from Postgres per request to check the live `is_banned` flag. This is not cached, ensuring a ban takes effect immediately, at the cost of one DB round-trip per authenticated request.
+- `AdminOnly` is purely a context-role check with no DB call. It is applied on top of the above two for `/admin/*` and admin-only question/testcase routes.
 
 ## 2.10 Logging and Observability
 
@@ -505,13 +504,13 @@ The backend uses a centralized `pkg/logging` package built on Uber's Zap logger.
 
 ### 2.10.1 Logger Responsibilities
 
-* Initialize a process-wide Zap logger at application startup.
-* Use production JSON logging when `ENV=production`.
-* Use development-friendly, colorized logs outside production.
-* Expose convenience helpers such as `Infof`, `Warnf`, `Errorf`, `Debugf`, and `Fatalf`.
-* Provide structured HTTP route logging through `RouteLogger`.
-* Record method, URI, HTTP status, latency, client IP, and request error information.
-* Fall back to a no-op logger if Zap initialization fails rather than crashing the application during logger setup.
+- Initialize a process-wide Zap logger at application startup.
+- Use production JSON logging when `ENV=production`.
+- Use development-friendly, colorized logs outside production.
+- Expose convenience helpers such as `Infof`, `Warnf`, `Errorf`, `Debugf`, and `Fatalf`.
+- Provide structured HTTP route logging through `RouteLogger`.
+- Record method, URI, HTTP status, latency, client IP, and request error information.
+- Fall back to a no-op logger if Zap initialization fails rather than crashing the application during logger setup.
 
 ### 2.10.2 Logging Package
 
@@ -620,14 +619,14 @@ sequenceDiagram
 
 ### 2.10.4 Logging Guidelines
 
-* Use structured fields for values that may be queried or aggregated.
-* Do not log passwords, JWTs, Google OAuth authorization codes, Google client secrets, or other authentication credentials.
-* Do not log complete source code or sensitive user data unless explicitly required for debugging and appropriately protected.
-* Use `Debugf` for high-volume diagnostic information.
-* Use `Infof` for normal application events.
-* Use `Warnf` for recoverable abnormal conditions.
-* Use `Errorf` for failed operations that require attention.
-* Use `Fatalf` only for unrecoverable process-level failures.
+- Use structured fields for values that may be queried or aggregated.
+- Do not log passwords, JWTs, Google OAuth authorization codes, Google client secrets, or other authentication credentials.
+- Do not log complete source code or sensitive user data unless explicitly required for debugging and appropriately protected.
+- Use `Debugf` for high-volume diagnostic information.
+- Use `Infof` for normal application events.
+- Use `Warnf` for recoverable abnormal conditions.
+- Use `Errorf` for failed operations that require attention.
+- Use `Fatalf` only for unrecoverable process-level failures.
 
 ## 2.11 Key Structs / Contracts
 

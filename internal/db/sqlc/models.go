@@ -34,6 +34,7 @@ type Question struct {
 	SampleTestInput  []string
 	SampleTestOutput []string
 	Explanation      []string
+	BountyActive     bool
 }
 
 type Submission struct {

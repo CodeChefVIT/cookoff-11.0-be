@@ -38,8 +38,6 @@ func CloseTokenCache() {
 	logging.Infof("Token cache connection closed")
 }
 
-// CacheToken stores token -> "submissionID:testcaseID" and adds the token to
-// the submission's outstanding-token set. Called by SubmitCode per LLD §2.7.
 func CacheToken(ctx context.Context, token string, submissionID string, testcaseID string) error {
 
 	if TokenCache == nil {
@@ -51,6 +49,26 @@ func CacheToken(ctx context.Context, token string, submissionID string, testcase
 	}
 	if err := TokenCache.SAdd(ctx, submissionTokensKey(submissionID), token).Err(); err != nil {
 		return fmt.Errorf("failed to add token %q to submission set: %w", token, err)
+	}
+	return nil
+}
+
+func CacheTokens(ctx context.Context, submissionID string, tokenToTestcase map[string]string) error {
+	if TokenCache == nil {
+		return fmt.Errorf("token cache is not initialized")
+	}
+	if len(tokenToTestcase) == 0 {
+		return nil
+	}
+
+	pipe := TokenCache.TxPipeline()
+	for token, testcaseID := range tokenToTestcase {
+		value := fmt.Sprintf("%s:%s", submissionID, testcaseID)
+		pipe.Set(ctx, tokenKey(token), value, 0)
+		pipe.SAdd(ctx, submissionTokensKey(submissionID), token)
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("failed to cache tokens for submission %q: %w", submissionID, err)
 	}
 	return nil
 }

@@ -9,8 +9,7 @@ import (
 
 	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -56,14 +55,14 @@ func (c *VisualSubmissionController) SubmitVisualSolution(ctx echo.Context) erro
 		))
 	}
 
-	claims, ok := ctx.Get("user").(*middlewares.JWTClaims)
+	userIDValue, ok := ctx.Get("user_id").(string)
 	if !ok {
 		return ctx.JSON(http.StatusUnauthorized, dto.NewErrorResponse(
 			"Unauthorized", nil,
 		))
 	}
 
-	userID, err := uuid.Parse(claims.UserID)
+	userID, err := uuid.Parse(userIDValue)
 	if err != nil {
 		return ctx.JSON(http.StatusBadRequest, dto.NewErrorResponse(
 			"Invalid user ID", nil,
