@@ -10,6 +10,7 @@ import (
 	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -40,7 +41,14 @@ func userID(c echo.Context) (uuid.UUID, error) {
 	return uuid.Parse(raw)
 }
 func parseQuestionID(c echo.Context) (uuid.UUID, error) { return uuid.Parse(c.Param("id")) }
-func questionError(c echo.Context, s int, m string) error {
+func questionError(c echo.Context, s int, m string, err ...error) error {
+	if s >= 500 {
+		if len(err) > 0 && err[0] != nil {
+			logging.Errorf("Question controller error [%d]: %s - %v", s, m, err[0])
+		} else {
+			logging.Errorf("Question controller error [%d]: %s", s, m)
+		}
+	}
 	return c.JSON(s, dto.NewErrorResponse(m, nil))
 }
 

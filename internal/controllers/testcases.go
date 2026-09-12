@@ -9,6 +9,7 @@ import (
 	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -30,7 +31,14 @@ type TestcaseController struct{ queries testcaseQueries }
 func NewTestcaseController(q testcaseQueries) *TestcaseController {
 	return &TestcaseController{queries: q}
 }
-func testcaseError(c echo.Context, s int, m string) error {
+func testcaseError(c echo.Context, s int, m string, err ...error) error {
+	if s >= 500 {
+		if len(err) > 0 && err[0] != nil {
+			logging.Errorf("Testcase controller error [%d]: %s - %v", s, m, err[0])
+		} else {
+			logging.Errorf("Testcase controller error [%d]: %s", s, m)
+		}
+	}
 	return c.JSON(s, dto.NewErrorResponse(m, nil))
 }
 func (tc *TestcaseController) Create(c echo.Context) error {
