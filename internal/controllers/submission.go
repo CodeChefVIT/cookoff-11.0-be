@@ -22,11 +22,11 @@ import (
 func SubmitCode(c echo.Context) error {
 	var req dto.SubmissionRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), err))
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
 	}
 
 	if err := c.Validate(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), err))
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
 	}
 
 	//get user id

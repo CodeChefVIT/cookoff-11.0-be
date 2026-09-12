@@ -50,7 +50,7 @@ func GetResult(c echo.Context) error {
 				if err != nil {
 					return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
 				}
-				return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submissison fetched successfully", result))
+				return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", result))
 
 			}
 		}
