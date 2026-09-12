@@ -15,6 +15,6 @@ func AdminSession(_ *sqlc.Queries) echo.HandlerFunc {
 		if !ok {
 			return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Unauthorized", nil))
 		}
-		return c.JSON(http.StatusOK, dto.NewSuccessResponse("admin session validated ", echo.Map{"user_id": userID, "role": c.Get(middlewares.RoleKey)}))
+		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Admin session validated", echo.Map{"user_id": userID, "role": c.Get(middlewares.RoleKey)}))
 	}
 }
