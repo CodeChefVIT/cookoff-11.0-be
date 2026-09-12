@@ -127,7 +127,7 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to create submission in database", nil))
 	}
 
-	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submissison created successfully", echo.Map{
+	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission created successfully", echo.Map{
 		"submission_id": submissionID,
 		}))
 }
