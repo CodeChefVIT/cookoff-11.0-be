@@ -36,8 +36,8 @@ func RegisterRoutes(e *echo.Echo) {
 	RegisterAttemptRoutes(e, authenticated...)
 	RegisterVisualSubmissionRoutes(e, authenticated...)
 
-	e.POST("/runcode", controllers.RunCode)
-	e.POST("/runcustom", controllers.RunCustom)
+	e.POST("/runcode", controllers.RunCode, authenticated...)
+	e.POST("/runcustom", controllers.RunCustom, authenticated...)
 
 	questionController := controllers.NewQuestionController(queries)
 	questionRoutes := e.Group("/question", authenticated...)
