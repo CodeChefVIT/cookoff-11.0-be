@@ -58,9 +58,13 @@ func SubmitCode(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	//zero testcase validation
+	if len(testcases) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "No testcases found for the question"})
+	}
 
 	//make payload
-	payload, err := submission.CreateSubmissionPayload(req.SourceCode, req.LanguageID, testcases)
+	payload, err := submission.CreateBatchSubmissionPayload(req.SourceCode, req.LanguageID, testcases)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -68,7 +72,7 @@ func SubmitCode(c echo.Context) error {
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	//send the payload
-	resp, err := submission.SendSubmissionPayload(client, payload)
+	resp, err := submission.SendBatchSubmissionPayload(client, payload)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -114,11 +118,12 @@ func SubmitCode(c echo.Context) error {
 	}
 
 	err = db.Queries.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
+		UserID:     userID,
 		ID:         submissionID,
 		QuestionID: questionID,
 		SourceCode: req.SourceCode,
 		LanguageID: int32(req.LanguageID), // #nosec G115
-		UserID:     userID,
+
 	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create submission in database"})

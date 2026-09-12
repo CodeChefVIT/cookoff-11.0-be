@@ -13,24 +13,15 @@ INSERT INTO testcases (
 RETURNING *;
 
 -- name: GetAllTestCasesByQuestion :many
-SELECT
-    id,
-    memory,
-    expected_output,
-    input,
-    hidden,
-    runtime,
-    question_id
-FROM testcases
+SELECT * FROM testcases
 WHERE question_id = $1;
 
 -- name: GetTestCaseByID :one
-SELECT id, expected_output, memory, input, hidden, runtime, question_id
-FROM testcases WHERE id = $1;
+SELECT * FROM testcases
+WHERE id = $1;
 
 -- name: GetPublicTestCasesByQuestion :many
-SELECT id, expected_output, memory, input, hidden, runtime, question_id
-FROM testcases
+SELECT * FROM testcases
 WHERE question_id = $1 AND hidden = false
 ORDER BY id ASC;
 

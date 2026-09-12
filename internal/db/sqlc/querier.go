@@ -22,7 +22,7 @@ type Querier interface {
 	DeleteQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	DeleteTestCase(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	EnsureAttempt(ctx context.Context, arg EnsureAttemptParams) error
-	GetAllTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]GetAllTestCasesByQuestionRow, error)
+	GetAllTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]Testcase, error)
 	GetAttemptForUpdate(ctx context.Context, arg GetAttemptForUpdateParams) (Attempt, error)
 	GetPublicTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]Testcase, error)
 	GetQuestionBuyIn(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
@@ -32,6 +32,7 @@ type Querier interface {
 	GetRoundOneVisualQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submission, error)
 	GetSubmissionResults(ctx context.Context, submissionID uuid.UUID) ([]SubmissionResult, error)
+	GetSubmissionStatusByID(ctx context.Context, id uuid.UUID) (*string, error)
 	GetTestCaseByID(ctx context.Context, id uuid.UUID) (Testcase, error)
 	GetUserBalanceForUpdate(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
 	GetUserByGoogleID(ctx context.Context, googleID *string) (User, error)
