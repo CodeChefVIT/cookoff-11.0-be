@@ -75,20 +75,20 @@ func RunCode(c echo.Context) error {
 
 			if resp.StatusCode != http.StatusCreated {
 				_ = resp.Body.Close()
-				errCh <- errors.New("Failure at Judge0")
+				errCh <- errors.New("failure at Judge0")
 				return
 			}
 
 			body, err := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
 			if err != nil {
-				errCh <- errors.New("Error reading response body")
+				errCh <- errors.New("error reading response body")
 				return
 			}
 
 			var payloadData dto.Judge0CallbackPayload
 			if err = json.Unmarshal(body, &payloadData); err != nil {
-				errCh <- errors.New("Failed to unmarshal response")
+				errCh <- errors.New("failed to unmarshal response")
 				return
 			}
 
