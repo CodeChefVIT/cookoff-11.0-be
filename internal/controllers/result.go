@@ -35,12 +35,16 @@ func GetResult(c echo.Context) error {
 
 		case <-ticker.C:
 			status, err := db.Queries.GetSubmissionStatusByID(ctx, submissionID)
-			if err != nil || status == nil {
+			if err != nil {
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get submission status"})
 			}
 
-			//other status stuff, im not sure abt
-			if *status != utils.Judge0InQueue.GetJudge0Status() && *status != utils.Judge0Processing.GetJudge0Status() {
+			statusStr := utils.Judge0InQueue.GetJudge0Status()
+			if status != nil {
+				statusStr = *status
+			}
+
+			if statusStr != utils.Judge0InQueue.GetJudge0Status() && statusStr != utils.Judge0Processing.GetJudge0Status() {
 				result, err := getSubmissionResult(ctx, submissionID)
 				if err != nil {
 					return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -95,14 +99,29 @@ func getSubmissionResult(ctx context.Context, submissionID uuid.UUID) (dto.Resul
 		description = *submission.Description
 	}
 
+	passed := 0
+	if submission.TestcasesPassed != nil {
+		passed = int(*submission.TestcasesPassed)
+	}
+
+	failed := 0
+	if submission.TestcasesFailed != nil {
+		failed = int(*submission.TestcasesFailed)
+	}
+
+	submissionTimeStr := ""
+	if submission.SubmissionTime.Valid {
+		submissionTimeStr = submission.SubmissionTime.Time.String()
+	}
+
 	return dto.ResultResponse{
 		ID:             submissionID.String(),
 		QuestionID:     submission.QuestionID.String(),
-		Passed:         int(*submission.TestcasesPassed),
-		Failed:         int(*submission.TestcasesFailed),
+		Passed:         passed,
+		Failed:         failed,
 		Runtime:        runtime.Float64,
 		Memory:         memory.Float64,
-		SubmissionTime: submission.SubmissionTime.Time.String(),
+		SubmissionTime: submissionTimeStr,
 		Description:    description,
 		Testcases:      testcases,
 	}, nil

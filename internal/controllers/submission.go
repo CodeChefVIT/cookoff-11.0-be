@@ -117,13 +117,14 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to cache submission tokens"})
 	}
 
+	statusInQueue := utils.Judge0InQueue.GetJudge0Status()
 	err = db.Queries.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
 		UserID:     userID,
 		ID:         submissionID,
 		QuestionID: questionID,
 		SourceCode: req.SourceCode,
 		LanguageID: int32(req.LanguageID), // #nosec G115
-
+		Status:     &statusInQueue,
 	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create submission in database"})
