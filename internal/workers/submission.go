@@ -162,12 +162,26 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 // finalizeSubmission runs once per submission, exactly when the last
 // testcase's callback arrives.
 func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uuid.UUID) error {
+	submission, err := qtx.GetSubmissionForUpdate(ctx, submissionID)
+	if err != nil {
+		return fmt.Errorf("get submission for update: %w", err)
+	}
+
 	results, err := qtx.GetSubmissionResults(ctx, submissionID)
 	if err != nil {
 		return fmt.Errorf("get submission results: %w", err)
 	}
 	if len(results) == 0 {
 		return fmt.Errorf("no submission results found for submission %s", submissionID)
+	}
+
+	testcases, err := qtx.GetAllTestCasesByQuestion(ctx, submission.QuestionID)
+	if err != nil {
+		return fmt.Errorf("get testcases for question: %w", err)
+	}
+	if len(results) != len(testcases) {
+		return fmt.Errorf("incomplete results for submission %s: got %d, expected %d",
+			submissionID, len(results), len(testcases))
 	}
 
 	var passed, failed int32
@@ -228,11 +242,6 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 
 	if failed > 0 {
 		return nil // not a full solve -- no reward/score to hand out
-	}
-
-	submission, err := qtx.GetSubmissionByID(ctx, submissionID)
-	if err != nil {
-		return fmt.Errorf("get submission: %w", err)
 	}
 
 	attempt, err := qtx.GetAttemptForUpdate(ctx, sqlc.GetAttemptForUpdateParams{

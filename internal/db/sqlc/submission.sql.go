@@ -80,6 +80,32 @@ func (q *Queries) GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submissi
 	return i, err
 }
 
+const getSubmissionForUpdate = `-- name: GetSubmissionForUpdate :one
+SELECT id, question_id, testcases_passed, testcases_failed, runtime, submission_time, source_code, language_id, description, memory, user_id, status FROM submissions
+WHERE id = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetSubmissionForUpdate(ctx context.Context, id uuid.UUID) (Submission, error) {
+	row := q.db.QueryRow(ctx, getSubmissionForUpdate, id)
+	var i Submission
+	err := row.Scan(
+		&i.ID,
+		&i.QuestionID,
+		&i.TestcasesPassed,
+		&i.TestcasesFailed,
+		&i.Runtime,
+		&i.SubmissionTime,
+		&i.SourceCode,
+		&i.LanguageID,
+		&i.Description,
+		&i.Memory,
+		&i.UserID,
+		&i.Status,
+	)
+	return i, err
+}
+
 const getSubmissionStatusByID = `-- name: GetSubmissionStatusByID :one
 SELECT status FROM submissions
 WHERE id = $1
