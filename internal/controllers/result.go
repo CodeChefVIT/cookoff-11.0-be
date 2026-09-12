@@ -22,7 +22,8 @@ func GetResult(c echo.Context) error {
 
 	submissionID, err := uuid.Parse(c.Param("submission_id"))
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
 	}
 
 	ticker := time.NewTicker(5 * time.Second)
@@ -31,12 +32,12 @@ func GetResult(c echo.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return c.JSON(http.StatusRequestTimeout, map[string]string{"error": "submission not processed yet"})
+			return c.JSON(http.StatusRequestTimeout,  dto.NewErrorResponse("Submission not processed yet", nil))
 
 		case <-ticker.C:
 			status, err := db.Queries.GetSubmissionStatusByID(ctx, submissionID)
 			if err != nil {
-				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get submission status"})
+				return c.JSON(http.StatusInternalServerError,  dto.NewErrorResponse("Failed to get submission status", nil))
 			}
 
 			statusStr := utils.Judge0InQueue.GetJudge0Status()
@@ -47,9 +48,9 @@ func GetResult(c echo.Context) error {
 			if statusStr != utils.Judge0InQueue.GetJudge0Status() && statusStr != utils.Judge0Processing.GetJudge0Status() {
 				result, err := getSubmissionResult(ctx, submissionID)
 				if err != nil {
-					return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+					return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
 				}
-				return c.JSON(http.StatusOK, result)
+				return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", result))
 
 			}
 		}
@@ -59,11 +60,11 @@ func GetResult(c echo.Context) error {
 func getSubmissionResult(ctx context.Context, submissionID uuid.UUID) (dto.ResultResponse, error) {
 	results, err := db.Queries.GetSubmissionResults(ctx, submissionID)
 	if err != nil {
-		return dto.ResultResponse{}, errors.New("failed to get submission result from database")
+		return dto.ResultResponse{}, errors.New("Failed to get submission result from database")
 	}
 	submission, err := db.Queries.GetSubmissionByID(ctx, submissionID)
 	if err != nil {
-		return dto.ResultResponse{}, errors.New("failed to get submission from database")
+		return dto.ResultResponse{}, errors.New("Failed to get submission from database")
 	}
 
 	testcases := make([]dto.TestcaseResult, len(results))
