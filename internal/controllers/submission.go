@@ -129,5 +129,5 @@ func SubmitCode(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission created successfully", echo.Map{
 		"submission_id": submissionID,
-		}))
+	}))
 }

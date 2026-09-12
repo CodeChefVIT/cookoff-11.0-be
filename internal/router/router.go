@@ -19,7 +19,7 @@ func RegisterRoutes(e *echo.Echo) {
 
 	// judge0 callback req
 	e.PUT("/judge0callback", controllers.Judge0Callback)
-	
+
 	e.GET("/auth/google", authController.StartGoogle)
 	e.GET("/auth/google/callback", authController.GoogleCallback)
 	// Keep the legacy versioned OAuth paths working for existing Google Console

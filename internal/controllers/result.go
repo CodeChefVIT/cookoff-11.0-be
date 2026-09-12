@@ -32,12 +32,12 @@ func GetResult(c echo.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return c.JSON(http.StatusRequestTimeout,  dto.NewErrorResponse("Submission not processed yet", nil))
+			return c.JSON(http.StatusRequestTimeout, dto.NewErrorResponse("Submission not processed yet", nil))
 
 		case <-ticker.C:
 			status, err := db.Queries.GetSubmissionStatusByID(ctx, submissionID)
 			if err != nil {
-				return c.JSON(http.StatusInternalServerError,  dto.NewErrorResponse("Failed to get submission status", nil))
+				return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to get submission status", nil))
 			}
 
 			statusStr := utils.Judge0InQueue.GetJudge0Status()

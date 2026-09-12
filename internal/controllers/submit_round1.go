@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/google/uuid"
@@ -38,35 +38,25 @@ func (c *VisualSubmissionController) SubmitVisualSolution(ctx echo.Context) erro
 	var req dto.SubmitVisualSolutionRequest
 
 	if err := ctx.Bind(&req); err != nil {
-		return ctx.JSON(http.StatusBadRequest, dto.NewErrorResponse(
-			"Invalid request body", nil,
-		))
+		return ctx.JSON(http.StatusBadRequest, dto.NewErrorResponse("Invalid request body", nil))
 	}
 
 	if req.QuestionID == uuid.Nil {
-		return ctx.JSON(http.StatusBadRequest, dto.NewErrorResponse(
-			"Invalid question ID", nil,
-		))
+		return ctx.JSON(http.StatusBadRequest, dto.NewErrorResponse("Invalid question ID", nil))
 	}
 
 	if len(req.Blocks) == 0 {
-		return ctx.JSON(http.StatusBadRequest, dto.NewErrorResponse(
-			"Blocks cannot be empty", nil,
-		))
+		return ctx.JSON(http.StatusBadRequest, dto.NewErrorResponse("Blocks cannot be empty", nil))
 	}
 
 	userIDValue, ok := ctx.Get("user_id").(string)
 	if !ok {
-		return ctx.JSON(http.StatusUnauthorized, dto.NewErrorResponse(
-			"Unauthorized", nil,
-		))
+		return ctx.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Unauthorized", nil))
 	}
 
 	userID, err := uuid.Parse(userIDValue)
 	if err != nil {
-		return ctx.JSON(http.StatusBadRequest, dto.NewErrorResponse(
-			"Invalid user ID", nil,
-		))
+		return ctx.JSON(http.StatusBadRequest, dto.NewErrorResponse("Invalid user ID", nil))
 	}
 
 	pointsAwarded, err := c.submitVisualSolution(
@@ -78,21 +68,15 @@ func (c *VisualSubmissionController) SubmitVisualSolution(ctx echo.Context) erro
 	if err != nil {
 		var httpErr *echo.HTTPError
 		if errors.As(err, &httpErr) {
-			return ctx.JSON(httpErr.Code, dto.NewErrorResponse(
-				httpErr.Message.(string), nil,
-			))
+			return ctx.JSON(httpErr.Code, dto.NewErrorResponse(httpErr.Message.(string), nil))
 		}
 
-		return ctx.JSON(http.StatusInternalServerError, dto.NewErrorResponse(
-			"Internal server error", nil,
-		))
+		return ctx.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Internal server error", nil))
 	}
 
-	return ctx.JSON(http.StatusOK, dto.NewSuccessResponse(
-		"Visual solution submitted successfully", dto.SubmitVisualSolutionResponse{
-			PointsAwarded: pointsAwarded,
-		},
-	))
+	return ctx.JSON(http.StatusOK, dto.NewSuccessResponse("Visual solution submitted successfully", dto.SubmitVisualSolutionResponse{
+		PointsAwarded: pointsAwarded,
+	}))
 }
 
 func (c *VisualSubmissionController) submitVisualSolution(
