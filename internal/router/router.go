@@ -62,5 +62,20 @@ func RegisterRoutes(e *echo.Echo) {
 	adminTestcaseRoutes.DELETE("/:id", testcaseController.Delete)
 
 	e.GET("/dashboard", controllers.Dashboard(queries), authenticated...)
-	e.GET("/admin/session", controllers.AdminSession(queries), authenticated[0], authenticated[1], middlewares.AdminOnly)
+	e.GET("/getTime", controllers.GetTime, authenticated...)
+
+	adminController := controllers.NewAdminController(queries)
+	adminRoutes := e.Group("/admin", authenticated[0], authenticated[1], middlewares.AdminOnly)
+	adminRoutes.GET("/session", controllers.AdminSession(queries))
+	adminRoutes.GET("/users", adminController.GetAllUsers)
+	adminRoutes.POST("/users/:id/ban", adminController.BanUser)
+	adminRoutes.POST("/users/:id/unban", adminController.UnbanUser)
+	adminRoutes.POST("/users/:id/upgrade", adminController.UpgradeUser)
+	adminRoutes.GET("/users/:id/submissions", adminController.GetUserSubmissions)
+	adminRoutes.GET("/leaderboard", adminController.GetLeaderboard)
+	adminRoutes.GET("/analytics", adminController.GetAnalytics)
+	adminRoutes.POST("/setTime", adminController.SetTime)
+	adminRoutes.POST("/updateTime", adminController.UpdateTime)
+	adminRoutes.GET("/startRound", adminController.StartRound)
+	adminRoutes.GET("/resetRound", adminController.ResetRound)
 }
