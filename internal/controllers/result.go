@@ -60,11 +60,11 @@ func GetResult(c echo.Context) error {
 func getSubmissionResult(ctx context.Context, submissionID uuid.UUID) (dto.ResultResponse, error) {
 	results, err := db.Queries.GetSubmissionResults(ctx, submissionID)
 	if err != nil {
-		return dto.ResultResponse{}, errors.New("Failed to get submission result from database")
+		return dto.ResultResponse{}, errors.New("failed to get submission result from database")
 	}
 	submission, err := db.Queries.GetSubmissionByID(ctx, submissionID)
 	if err != nil {
-		return dto.ResultResponse{}, errors.New("Failed to get submission from database")
+		return dto.ResultResponse{}, errors.New("failed to get submission from database")
 	}
 
 	testcases := make([]dto.TestcaseResult, len(results))
