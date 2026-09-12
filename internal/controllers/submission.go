@@ -22,17 +22,17 @@ import (
 func SubmitCode(c echo.Context) error {
 	var req dto.SubmissionRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), err))
 	}
 
 	if err := c.Validate(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), err))
 	}
 
-	//get user id here
+	//get user id
 	userIDStr, ok := c.Get(middlewares.UserIDKey).(string)
 	if !ok || userIDStr == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Unauthorized", nil))
 	}
 
 	// userID is set by middlewares.VerifyJWTMiddleware (applied to this route
@@ -40,12 +40,12 @@ func SubmitCode(c echo.Context) error {
 	// c.Set(middlewares.UserIDKey, claims.UserID) before this handler runs.
 	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid user id"})
+		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Invalid user id", nil))
 	}
 
 	questionID, err := uuid.Parse(req.QuestionID)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
 	}
 
 	submissionID := uuid.New()
@@ -56,17 +56,18 @@ func SubmitCode(c echo.Context) error {
 	//fetch testcases from db
 	testcases, err := db.Queries.GetAllTestCasesByQuestion(ctx, questionID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
 	}
+
 	//zero testcase validation
 	if len(testcases) == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "No testcases found for the question"})
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse("No testcases found for the question", nil))
 	}
 
 	//make payload
 	payload, err := submission.CreateBatchSubmissionPayload(req.SourceCode, req.LanguageID, testcases)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -74,17 +75,17 @@ func SubmitCode(c echo.Context) error {
 	//send the payload
 	resp, err := submission.SendBatchSubmissionPayload(client, payload)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
 	}
 
-	defer func() { _ = resp.Body.Close() }()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failure at Judge0"})
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failure at Judge0", nil))
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Error reading response body"})
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Error reading response body", nil))
 	}
 
 	type Token struct {
@@ -94,27 +95,23 @@ func SubmitCode(c echo.Context) error {
 	var tokens []Token
 	err = json.Unmarshal(body, &tokens)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to decode body"})
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to decode body", nil))
 	}
 
 	if len(tokens) != len(testcases) {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": "judge0 returned a different number of tokens than testcases submitted",
-		})
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Judge0 returned a different number of tokens than testcases submitted", nil))
 	}
 
 	tokenToTestcase := make(map[string]string, len(tokens))
 	for i, t := range tokens {
 		if t.Token == "" {
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": "judge0 returned an empty token for one or more testcases",
-			})
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Judge0 returned an empty token for one or more testcases", nil))
 		}
 		tokenToTestcase[t.Token] = testcases[i].ID.String()
 	}
 
 	if err = utils.CacheTokens(ctx, submissionID.String(), tokenToTestcase); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to cache submission tokens"})
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to cache submission tokens", nil))
 	}
 
 	statusInQueue := utils.Judge0InQueue.GetJudge0Status()
@@ -127,10 +124,10 @@ func SubmitCode(c echo.Context) error {
 		Status:     &statusInQueue,
 	})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create submission in database"})
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to create submission in database", nil))
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{
+	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submissison created successfully", echo.Map{
 		"submission_id": submissionID,
-	})
+		}))
 }
