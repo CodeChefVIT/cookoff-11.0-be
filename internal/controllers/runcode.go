@@ -20,15 +20,15 @@ func RunCode(c echo.Context) error {
 	var req dto.SubmissionRequest
 
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
 	}
 	if err := c.Validate(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
 	}
 
 	questionID, err := uuid.Parse(req.QuestionID)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
 	}
 
 	submissionID := uuid.New()
@@ -39,7 +39,7 @@ func RunCode(c echo.Context) error {
 	// fetch testcases from db
 	testcases, err := db.Queries.GetPublicTestCasesByQuestion(ctx, questionID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
 	}
 
 	result := make([]dto.Judge0CallbackPayload, len(testcases))
@@ -48,27 +48,27 @@ func RunCode(c echo.Context) error {
 	for i, testcase := range testcases {
 		payload, err := submission.CreateSubmissionPayload(req.SourceCode, req.LanguageID, testcase)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
 		}
 
 		resp, err := submission.SendSubmissionPayloadWithWait(client, payload)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
 		}
 
 		if resp.StatusCode != http.StatusCreated {
 			_ = resp.Body.Close()
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failure at Judge0"})
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failure at Judge0", nil))
 		}
 
 		body, err := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Error reading response body"})
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Error reading response body", nil))
 		}
 
 		if err = json.Unmarshal(body, &result[i]); err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to unmarshal response"})
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to unmarshal response", nil))
 		}
 
 		if result[i].StdOut != nil {
@@ -91,17 +91,17 @@ func RunCode(c echo.Context) error {
 		}
 	}
 
-	return c.JSON(http.StatusOK, result)
+	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Code successfully run", result))
 }
 
 func RunCustom(c echo.Context) error {
 	var req dto.CustomSubmissionRequest
 
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
 	}
 	if err := c.Validate(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
 	}
 
 	// dummy testcase
@@ -111,30 +111,30 @@ func RunCustom(c echo.Context) error {
 
 	payload, err := submission.CreateSubmissionPayload(req.SourceCode, req.LanguageID, testcase)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
 	}
 
 	client := &http.Client{}
 
 	resp, err := submission.SendSubmissionPayloadWithWait(client, payload)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
 	}
 
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failure at Judge0"})
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failure at Judge0", nil))
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Error reading response body"})
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Error reading response body", nil))
 	}
 
 	var result dto.Judge0CallbackPayload
 	if err := json.Unmarshal(body, &result); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to unmarshal response"})
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to unmarshal response", nil))
 	}
 
 	if result.StdOut != nil {
@@ -156,5 +156,5 @@ func RunCustom(c echo.Context) error {
 		}
 	}
 
-	return c.JSON(http.StatusOK, result)
+	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Custom testcase successfully run", result))
 }
