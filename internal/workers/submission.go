@@ -149,38 +149,50 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 	defer func() { _ = finalTx.Rollback(ctx) }()
 	finalQtx := db.Queries.WithTx(finalTx)
 
-	if err := finalizeSubmission(ctx, finalQtx, submissionID); err != nil {
+	// CHANGE #1: finalizeSubmission now also returns the built result so we
+	// can cache it below, instead of returning only an error.
+	result, err := finalizeSubmission(ctx, finalQtx, submissionID)
+	if err != nil {
 		return fmt.Errorf("finalize submission: %w", err)
 	}
 
 	if err := finalTx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit final tx: %w", err)
 	}
+
+	// CHANGE #2: cache the finished result in Redis, only after the commit
+	// succeeded, so GetResult can serve it without hitting Postgres.
+	if cacheErr := utils.CacheSubmissionResult(ctx, submissionID.String(), result); cacheErr != nil {
+		// Don't fail the whole job over a cache write -- GetResult still has
+		// a Postgres fallback if this is missing.
+		logging.Warnf("submission %s: failed to cache result: %v", submissionID, cacheErr)
+	}
 	return nil
 }
 
 // finalizeSubmission runs once per submission, exactly when the last
-// testcase's callback arrives.
-func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uuid.UUID) error {
+// testcase's callback arrives. It now returns the built dto.ResultResponse
+// alongside the error, so the caller can cache it in Redis after commit.
+func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uuid.UUID) (dto.ResultResponse, error) {
 	submission, err := qtx.GetSubmissionForUpdate(ctx, submissionID)
 	if err != nil {
-		return fmt.Errorf("get submission for update: %w", err)
+		return dto.ResultResponse{}, fmt.Errorf("get submission for update: %w", err)
 	}
 
 	results, err := qtx.GetSubmissionResults(ctx, submissionID)
 	if err != nil {
-		return fmt.Errorf("get submission results: %w", err)
+		return dto.ResultResponse{}, fmt.Errorf("get submission results: %w", err)
 	}
 	if len(results) == 0 {
-		return fmt.Errorf("no submission results found for submission %s", submissionID)
+		return dto.ResultResponse{}, fmt.Errorf("no submission results found for submission %s", submissionID)
 	}
 
 	testcases, err := qtx.GetAllTestCasesByQuestion(ctx, submission.QuestionID)
 	if err != nil {
-		return fmt.Errorf("get testcases for question: %w", err)
+		return dto.ResultResponse{}, fmt.Errorf("get testcases for question: %w", err)
 	}
 	if len(results) != len(testcases) {
-		return fmt.Errorf("incomplete results for submission %s: got %d, expected %d",
+		return dto.ResultResponse{}, fmt.Errorf("incomplete results for submission %s: got %d, expected %d",
 			submissionID, len(results), len(testcases))
 	}
 
@@ -214,11 +226,11 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 
 	runtimeNumeric, err := utils.Float64ToNumeric(maxRuntime)
 	if err != nil {
-		return fmt.Errorf("convert aggregate runtime: %w", err)
+		return dto.ResultResponse{}, fmt.Errorf("convert aggregate runtime: %w", err)
 	}
 	memoryNumeric, err := utils.Float64ToNumeric(maxMemory)
 	if err != nil {
-		return fmt.Errorf("convert aggregate memory: %w", err)
+		return dto.ResultResponse{}, fmt.Errorf("convert aggregate memory: %w", err)
 	}
 
 	var overallDesc string
@@ -237,11 +249,46 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		Status:          &overallStatus,
 		Description:     &overallDesc,
 	}); updateErr != nil {
-		return fmt.Errorf("update submission status: %w", updateErr)
+		return dto.ResultResponse{}, fmt.Errorf("update submission status: %w", updateErr)
+	}
+
+	// CHANGE #3: build the response we're going to cache in Redis, using the
+	// `results` and `submission` we already fetched above -- no extra
+	// Postgres queries needed to build this.
+	testcaseResults := make([]dto.TestcaseResult, len(results))
+	for i, r := range results {
+		rt, _ := utils.NumericToFloat64(r.Runtime)
+		mem, _ := utils.NumericToFloat64(r.Memory)
+		tcID := ""
+		if r.TestcaseID.Valid {
+			tcID = uuid.UUID(r.TestcaseID.Bytes).String()
+		}
+		desc := ""
+		if r.Description != nil {
+			desc = *r.Description
+		}
+		testcaseResults[i] = dto.TestcaseResult{
+			ID:          tcID,
+			Runtime:     rt,
+			Memory:      mem,
+			Status:      r.Status,
+			Description: desc,
+		}
+	}
+	response := dto.ResultResponse{
+		ID:             submissionID.String(),
+		QuestionID:     submission.QuestionID.String(),
+		Passed:         int(passed),
+		Failed:         int(failed),
+		Runtime:        maxRuntime,
+		Memory:         maxMemory,
+		SubmissionTime: submission.SubmissionTime.Time.String(),
+		Description:    overallDesc,
+		Testcases:      testcaseResults,
 	}
 
 	if failed > 0 {
-		return nil // not a full solve -- no reward/score to hand out
+		return response, nil // not a full solve -- no reward/score to hand out
 	}
 
 	attempt, err := qtx.GetAttemptForUpdate(ctx, sqlc.GetAttemptForUpdateParams{
@@ -250,7 +297,7 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	})
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("get attempt: %w", err)
+			return dto.ResultResponse{}, fmt.Errorf("get attempt: %w", err)
 		}
 
 		// No attempt row yet -- create one instead of dropping the reward.
@@ -262,7 +309,7 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 			UserID:     submission.UserID,
 			QuestionID: submission.QuestionID,
 		}); ensureErr != nil {
-			return fmt.Errorf("ensure attempt: %w", ensureErr)
+			return dto.ResultResponse{}, fmt.Errorf("ensure attempt: %w", ensureErr)
 		}
 
 		// Re-fetch + lock: either the row we just made, or one a concurrent
@@ -272,21 +319,21 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 			QuestionID: submission.QuestionID,
 		})
 		if err != nil {
-			return fmt.Errorf("get attempt after ensure: %w", err)
+			return dto.ResultResponse{}, fmt.Errorf("get attempt after ensure: %w", err)
 		}
 	}
 	if attempt.Status == "answered" {
 		logging.Infof("submission %s: attempt already answered, skipping duplicate reward", submissionID)
-		return nil
+		return response, nil
 	}
 
 	question, err := qtx.GetQuestionByID(ctx, submission.QuestionID)
 	if err != nil {
-		return fmt.Errorf("get question: %w", err)
+		return dto.ResultResponse{}, fmt.Errorf("get question: %w", err)
 	}
 	rewardNumeric, err := qtx.GetQuestionReward(ctx, submission.QuestionID)
 	if err != nil {
-		return fmt.Errorf("get question reward: %w", err)
+		return dto.ResultResponse{}, fmt.Errorf("get question reward: %w", err)
 	}
 	reward, err := utils.NumericToFloat64(rewardNumeric)
 	if err != nil {
@@ -296,40 +343,40 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	// Lock score before balance to prevent deadlocks
 	scoreNumeric, err := qtx.GetUserScoreForUpdate(ctx, submission.UserID)
 	if err != nil {
-		return fmt.Errorf("get user score: %w", err)
+		return dto.ResultResponse{}, fmt.Errorf("get user score: %w", err)
 	}
 	score, err := utils.NumericToFloat64(scoreNumeric)
 	if err != nil {
-		return fmt.Errorf("convert score: %w", err)
+		return dto.ResultResponse{}, fmt.Errorf("convert score: %w", err)
 	}
 	newScoreNumeric, err := utils.Float64ToNumeric(score + float64(question.Points))
 	if err != nil {
-		return fmt.Errorf("convert new score: %w", err)
+		return dto.ResultResponse{}, fmt.Errorf("convert new score: %w", err)
 	}
 	if updateScoreErr := qtx.UpdateUserScore(ctx, sqlc.UpdateUserScoreParams{
 		ID:    submission.UserID,
 		Score: newScoreNumeric,
 	}); updateScoreErr != nil {
-		return fmt.Errorf("update user score: %w", updateScoreErr)
+		return dto.ResultResponse{}, fmt.Errorf("update user score: %w", updateScoreErr)
 	}
 
 	balanceNumeric, err := qtx.GetUserBalanceForUpdate(ctx, submission.UserID)
 	if err != nil {
-		return fmt.Errorf("get user balance: %w", err)
+		return dto.ResultResponse{}, fmt.Errorf("get user balance: %w", err)
 	}
 	balance, err := utils.NumericToFloat64(balanceNumeric)
 	if err != nil {
-		return fmt.Errorf("convert balance: %w", err)
+		return dto.ResultResponse{}, fmt.Errorf("convert balance: %w", err)
 	}
 	newBalanceNumeric, err := utils.Float64ToNumeric(balance + reward)
 	if err != nil {
-		return fmt.Errorf("convert new balance: %w", err)
+		return dto.ResultResponse{}, fmt.Errorf("convert new balance: %w", err)
 	}
 	if err := qtx.UpdateUserBalance(ctx, sqlc.UpdateUserBalanceParams{
 		ID:      submission.UserID,
 		Balance: newBalanceNumeric,
 	}); err != nil {
-		return fmt.Errorf("update user balance: %w", err)
+		return dto.ResultResponse{}, fmt.Errorf("update user balance: %w", err)
 	}
 
 	if err := qtx.UpdateAttemptStatus(ctx, sqlc.UpdateAttemptStatusParams{
@@ -338,10 +385,10 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		Status:     "answered",
 		AnsweredAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	}); err != nil {
-		return fmt.Errorf("update attempt status: %w", err)
+		return dto.ResultResponse{}, fmt.Errorf("update attempt status: %w", err)
 	}
 
 	logging.Infof("submission %s finalized: user=%s question=%s reward=%.2f points=%d",
 		submissionID, submission.UserID, submission.QuestionID, reward, question.Points)
-	return nil
+	return response, nil
 }

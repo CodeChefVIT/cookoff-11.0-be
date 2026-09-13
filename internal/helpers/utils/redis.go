@@ -75,3 +75,13 @@ func DeleteCache(ctx context.Context, key string) error {
 	}
 	return RedisClient.Del(ctx, key).Err()
 }
+
+func SubmissionResultKey(submissionID string) string {
+	return "sub:status:" + submissionID
+}
+
+// CacheSubmissionResult stores the final result so GetResult never has to
+// touch Postgres to serve it.
+func CacheSubmissionResult(ctx context.Context, submissionID string, result interface{}) error {
+	return SetCache(ctx, SubmissionResultKey(submissionID), result, 30*time.Minute)
+}
