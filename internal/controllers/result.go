@@ -22,7 +22,7 @@ func GetResult(c echo.Context) error {
 
 	submissionID, err := uuid.Parse(c.Param("submission_id"))
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
 	}
 
 	ticker := time.NewTicker(1 * time.Second) // cheap now, so we can check more often
@@ -31,12 +31,12 @@ func GetResult(c echo.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return c.JSON(http.StatusRequestTimeout, map[string]string{"error": "submission not processed yet"})
+			return c.JSON(http.StatusRequestTimeout, dto.NewErrorResponse("Submission not processed yet", nil))
 		case <-ticker.C:
 			var result dto.ResultResponse
 			err := utils.GetCache(ctx, utils.SubmissionResultKey(submissionID.String()), &result)
 			if err == nil {
-				return c.JSON(http.StatusOK, result) // cache hit -- zero Postgres queries
+				return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", result)) // cache hit -- zero Postgres queries
 			}
 			if !errors.Is(err, redis.Nil) {
 				// Redis itself is having a bad day -- fall back to Postgres
@@ -46,7 +46,7 @@ func GetResult(c echo.Context) error {
 					*status != utils.Judge0InQueue.GetJudge0Status() &&
 					*status != utils.Judge0Processing.GetJudge0Status() {
 					if res, resErr := getSubmissionResult(ctx, submissionID); resErr == nil {
-						return c.JSON(http.StatusOK, res)
+						return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", res))
 					}
 				}
 			}
@@ -98,16 +98,30 @@ func getSubmissionResult(ctx context.Context, submissionID uuid.UUID) (dto.Resul
 		description = *submission.Description
 	}
 
+	passed := 0
+	if submission.TestcasesPassed != nil {
+		passed = int(*submission.TestcasesPassed)
+	}
+
+	failed := 0
+	if submission.TestcasesFailed != nil {
+		failed = int(*submission.TestcasesFailed)
+	}
+
+	submissionTimeStr := ""
+	if submission.SubmissionTime.Valid {
+		submissionTimeStr = submission.SubmissionTime.Time.String()
+	}
+
 	return dto.ResultResponse{
 		ID:             submissionID.String(),
 		QuestionID:     submission.QuestionID.String(),
-		Passed:         int(*submission.TestcasesPassed),
-		Failed:         int(*submission.TestcasesFailed),
+		Passed:         passed,
+		Failed:         failed,
 		Runtime:        runtime.Float64,
 		Memory:         memory.Float64,
-		SubmissionTime: submission.SubmissionTime.Time.String(),
+		SubmissionTime: submissionTimeStr,
 		Description:    description,
 		Testcases:      testcases,
 	}, nil
-
 }

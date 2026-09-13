@@ -3,7 +3,7 @@ package router
 import (
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/controllers"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
-	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
 	"github.com/labstack/echo/v4"
 )
@@ -19,6 +19,7 @@ func RegisterRoutes(e *echo.Echo) {
 
 	// judge0 callback req
 	e.PUT("/judge0callback", controllers.Judge0Callback)
+
 	e.GET("/auth/google", authController.StartGoogle)
 	e.GET("/auth/google/callback", authController.GoogleCallback)
 	// Keep the legacy versioned OAuth paths working for existing Google Console
@@ -35,8 +36,8 @@ func RegisterRoutes(e *echo.Echo) {
 	RegisterAttemptRoutes(e, authenticated...)
 	RegisterVisualSubmissionRoutes(e, authenticated...)
 
-	e.POST("/runcode", controllers.RunCode)
-	e.POST("/runcustom", controllers.RunCustom)
+	e.POST("/runcode", controllers.RunCode, authenticated...)
+	e.POST("/runcustom", controllers.RunCustom, authenticated...)
 
 	questionController := controllers.NewQuestionController(queries)
 	questionRoutes := e.Group("/question", authenticated...)

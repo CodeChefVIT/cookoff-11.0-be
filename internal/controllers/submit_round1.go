@@ -113,7 +113,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return 0, echo.NewHTTPError(http.StatusNotFound, "Question doesnt exist")
+			return 0, echo.NewHTTPError(http.StatusNotFound, "Question doesn't exist")
 		}
 		return 0, err
 	}
@@ -190,7 +190,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 		return 0, err
 	}
 
-	//updating the submisssion status
+	//updating the submission status
 	submissionStatus := "wrong answer"
 	if isCorrect {
 		submissionStatus = "success"

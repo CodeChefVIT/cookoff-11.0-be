@@ -6,6 +6,7 @@ import (
 
 	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
@@ -23,11 +24,13 @@ func Dashboard(q dashboardQueries) echo.HandlerFunc {
 		}
 		u, e := q.GetUserByID(c.Request().Context(), id)
 		if e != nil {
-			return c.JSON(500, dto.NewErrorResponse("failed to load dashboard", nil))
+			logging.Errorf("Dashboard error loading user %s: %v", id, e)
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("failed to load dashboard", nil))
 		}
 		rows, e := q.ListDashboardQuestions(c.Request().Context(), id)
 		if e != nil {
-			return c.JSON(500, dto.NewErrorResponse("failed to load dashboard", nil))
+			logging.Errorf("Dashboard error loading questions for user %s: %v", id, e)
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("failed to load dashboard", nil))
 		}
 		d := dto.DashboardResponse{ID: u.ID, Name: u.Name, Email: u.Email, RoundQualified: u.RoundQualified, Questions: make([]dto.DashboardQuestion, len(rows)), AttemptTotals: map[string]int{"available": 0, "bought": 0, "answered": 0}}
 		d.Balance = numericText(u.Balance)
@@ -36,6 +39,6 @@ func Dashboard(q dashboardQueries) echo.HandlerFunc {
 			d.Questions[i] = dto.DashboardQuestion{ID: r.ID, Title: r.Title, Points: r.Points, Round: r.Round, AttemptStatus: r.AttemptStatus}
 			d.AttemptTotals[r.AttemptStatus]++
 		}
-		return c.JSON(200, dto.NewSuccessResponse("Dashboard retrieved", d))
+		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Dashboard retrieved", d))
 	}
 }

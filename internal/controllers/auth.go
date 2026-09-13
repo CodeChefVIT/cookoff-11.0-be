@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/auth"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/google/uuid"
@@ -29,11 +30,11 @@ func NewAuthController(queries *sqlc.Queries) *AuthController {
 
 func (ac *AuthController) StartGoogle(c echo.Context) error {
 	if utils.Config.GoogleClientID == "" || utils.Config.GoogleClientSecret == "" || utils.Config.GoogleRedirectURI == "" {
-		return echo.NewHTTPError(http.StatusInternalServerError, "OAuth is not configured")
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("OAuth is not configured", nil))
 	}
 	state, cookie, err := auth.NewState()
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "unable to start OAuth")
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Unable to start OAuth", nil))
 	}
 	c.SetCookie(cookie)
 	values := url.Values{
@@ -51,28 +52,29 @@ func (ac *AuthController) GoogleCallback(c echo.Context) error {
 	validState := auth.ValidateState(stateCookie, c.QueryParam("state"))
 	c.SetCookie(auth.ClearStateCookie())
 	if err != nil || !validState || c.QueryParam("code") == "" {
-		return echo.NewHTTPError(http.StatusUnauthorized, "invalid OAuth callback")
+		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Invalid OAuth callback", nil))
 	}
 	identity, err := ac.googleIdentity(c.Request().Context(), c.QueryParam("code"))
 	if err != nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, "Google authentication failed")
+		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Google authentication failed", nil))
 	}
 	user, err := ac.findUser(c.Request().Context(), identity)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return echo.NewHTTPError(http.StatusUnauthorized, "account is not registered")
+			return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Account is not registered", nil))
 		}
-		return echo.NewHTTPError(http.StatusInternalServerError, "unable to establish session")
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Unable to establish session", nil))
 	}
 	if user.IsBanned {
 		for _, cookie := range auth.ClearSessionCookies() {
 			c.SetCookie(cookie)
 		}
-		return echo.NewHTTPError(http.StatusForbidden, "account is banned")
+
+		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Account is banned", nil))
 	}
 	cookies, err := auth.SessionCookies(auth.User{ID: user.ID.String(), Email: user.Email, Role: user.Role})
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "unable to establish session")
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Unable to establish session", nil))
 	}
 	for _, cookie := range cookies {
 		c.SetCookie(cookie)
@@ -99,7 +101,7 @@ func (ac *AuthController) RefreshToken(c echo.Context) error {
 	}
 	cookies, err := auth.SessionCookies(auth.User{ID: user.ID.String(), Email: user.Email, Role: user.Role})
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "unable to refresh session")
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Unable to refresh session", nil))
 	}
 	for _, sessionCookie := range cookies {
 		c.SetCookie(sessionCookie)
@@ -118,7 +120,8 @@ func (ac *AuthController) unauthorized(c echo.Context) error {
 	for _, cookie := range auth.ClearSessionCookies() {
 		c.SetCookie(cookie)
 	}
-	return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
+
+	return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Unauthorized", nil))
 }
 
 type googleIdentity struct{ Subject, Email, Name string }
