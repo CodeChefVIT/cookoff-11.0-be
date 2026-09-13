@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cookoff 11.0 Backend API Documentation</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+  <link rel="icon" type="image/png" href="https://unpkg.com/swagger-ui-dist@5/favicon-32x32.png" sizes="32x32" />
+  <style>
+    html {
+      box-sizing: border-box;
+      overflow: -moz-scrollbars-vertical;
+      overflow-y: scroll;
+    }
+    *, *:before, *:after {
+      box-sizing: inherit;
+    }
+    body {
+      margin: 0;
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    }
+    .swagger-ui {
+      filter: invert(88%) hue-rotate(180deg);
+    }
+    .swagger-ui .topbar {
+      display: none;
+    }
+    .swagger-ui img {
+      filter: invert(100%) hue-rotate(180deg);
+    }
+    .custom-header {
+      background: #1e293b;
+      padding: 1rem 2rem;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .custom-header h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      color: #38bdf8;
+      font-weight: 600;
+    }
+    .custom-header span {
+      font-size: 0.875rem;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="custom-header">
+    <h1>CodeChefVIT Cookoff 11.0 API Docs</h1>
+    <span>OpenAPI 3.0 Specification</span>
+  </div>
+  <div id="swagger-ui"></div>
+
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js" charset="UTF-8"> </script>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js" charset="UTF-8"> </script>
+  <script>
+    window.onload = function() {
+      const ui = SwaggerUIBundle({
+        url: "./docs.yaml",
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: "StandaloneLayout"
+      });
+      window.ui = ui;
+    };
+  </script>
+</body>
+</html>

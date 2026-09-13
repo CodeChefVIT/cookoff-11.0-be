@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "public": true,
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/", "destination": "/docs/index.html" },
+    { "source": "/docs", "destination": "/docs/index.html" },
+    { "source": "/docs.yaml", "destination": "/docs/docs.yaml" }
+  ]
+}

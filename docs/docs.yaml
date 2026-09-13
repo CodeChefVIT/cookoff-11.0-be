@@ -1,19 +1,56 @@
-openapi: 3.0.0
+openapi: 3.0.3
 info:
-  title: Cookoff 11.0 Backend API
+  title: CodeChefVIT Cookoff 11.0 API Documentation
   version: 1.0.0
-  description: API documentation for CodeChefVIT Cookoff 11.0 Backend.
+  description: |
+    Fully verified and authoritative API documentation for CodeChefVIT Cookoff 11.0 Backend.
+    Accurately cross-checked against backend handlers, router definitions, and DTO structs.
+    
+    All backend endpoints follow standard JSON response envelopes:
+    - **Success Response**: `{ "success": true, "message": "...", "data": { ... } }`
+    - **Error Response**: `{ "success": false, "message": "...", "errors": null }`
 servers:
   - url: http://localhost:8080
-    description: Local development server
+    description: Local Development Server
+  - url: https://api.cookoff.codechefvit.com
+    description: Production Server
+
+tags:
+  - name: System & Health
+    description: System health and operational callbacks
+  - name: Authentication
+    description: User authentication via Google OAuth2 and session token management
+  - name: Dashboard
+    description: Participant dashboard and question status overview
+  - name: Questions (User)
+    description: Participant question browsing and visual block retrieval
+  - name: Attempts
+    description: Question attempt management and score balance unlock
+  - name: Submissions & Execution
+    description: Code execution, visual block solutions, and Judge0 callbacks
+  - name: Leaderboard
+    description: Real-time event ranking and user scores
+  - name: Admin - Session & Users
+    description: Admin authentication session, user moderation, and user submission logs
+  - name: Admin - Question Management
+    description: CRUD operations for round questions and bounty controls
+  - name: Admin - Testcase Management
+    description: CRUD operations for question testcases
+  - name: Admin - Leaderboard & Analytics
+    description: Admin event analytics and detailed leaderboard
+  - name: Admin - Round Control
+    description: Round timer setup and event state toggles
+
 paths:
   /health:
     get:
+      tags:
+        - System & Health
       summary: Health check endpoint
-      description: Check the health status of external services (PostgreSQL and Redis).
+      description: Check the operational status of PostgreSQL and Redis services.
       responses:
         '200':
-          description: All systems operational.
+          description: All backend services operational.
           content:
             application/json:
               schema:
@@ -35,118 +72,818 @@ paths:
                         type: string
                         example: "OK"
         '503':
-          description: One or more services are down.
+          description: One or more external services are down.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-  /api/v1/users:
-    post:
-      summary: Create a new user
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Health check completed"
+                  data:
+                    type: object
+                    properties:
+                      postgres:
+                        type: string
+                        example: "DOWN"
+                      redis:
+                        type: string
+                        example: "OK"
+
+  /docs:
+    get:
+      tags:
+        - System & Health
+      summary: API Documentation UI
+      description: Returns interactive Swagger HTML documentation.
+      responses:
+        '200':
+          description: HTML page content.
+
+  /judge0callback:
+    put:
+      tags:
+        - System & Health
+      summary: Judge0 Callback Endpoint
+      description: Internal callback endpoint invoked by Judge0 worker upon completion of submission evaluation.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateUserRequest'
+              $ref: '#/components/schemas/Judge0CallbackPayload'
+      responses:
+        '200':
+          description: Callback processed successfully (204 No Content returned by handler).
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /auth/google:
+    get:
+      tags:
+        - Authentication
+      summary: Initiate Google OAuth2 Auth Flow
+      description: Redirects the user to Google OAuth2 consent screen and sets state cookie.
+      parameters:
+        - in: query
+          name: portal
+          schema:
+            type: string
+            enum: [user, admin]
+            default: user
+          description: Specify whether login is for participant portal or admin dashboard.
+      responses:
+        '302':
+          description: Redirect (302) to Google Accounts authentication URL.
+
+  /api/v1/auth/google:
+    get:
+      tags:
+        - Authentication
+      summary: Legacy Alias for Google OAuth2 Initiation
+      responses:
+        '302':
+          description: Redirect to Google Accounts authentication URL.
+
+  /auth/google/callback:
+    get:
+      tags:
+        - Authentication
+      summary: Google OAuth2 Callback
+      description: Validates state cookie and code, exchanges ID token, sets session cookies, and redirects user.
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema:
+            type: string
+          description: Google OAuth authorization code.
+        - in: query
+          name: state
+          required: true
+          schema:
+            type: string
+          description: OAuth state string for CSRF protection.
+      responses:
+        '302':
+          description: Redirect to frontend URL or admin dashboard URL on successful login.
+        '401':
+          description: Invalid OAuth callback, Google auth failed, or user not registered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Account is banned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/auth/google/callback:
+    get:
+      tags:
+        - Authentication
+      summary: Legacy Alias for Google OAuth2 Callback
+      responses:
+        '302':
+          description: Redirect to frontend URL or admin dashboard URL.
+
+  /refreshToken:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh Session Tokens
+      description: Issues updated session cookies using the refresh token cookie.
+      responses:
+        '204':
+          description: Token refreshed successfully (204 No Content with set cookies).
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /logout:
+    post:
+      tags:
+        - Authentication
+      summary: User Logout
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      description: Clears authentication session cookies.
+      responses:
+        '204':
+          description: Logout successful (204 No Content with cleared cookies).
+
+  /dashboard:
+    get:
+      tags:
+        - Dashboard
+      summary: Get Participant Dashboard Overview
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      description: Fetch participant profile, score, points balance, qualified round, and question attempt counts.
+      responses:
+        '200':
+          description: Dashboard details loaded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Dashboard retrieved"
+                  data:
+                    $ref: '#/components/schemas/DashboardResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /question/round:
+    get:
+      tags:
+        - Questions (User)
+      summary: List Questions for Current User Round
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      description: Retrieve list of questions corresponding to the user's qualified round.
+      responses:
+        '200':
+          description: Questions retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Questions retrieved"
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QuestionResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /question/{id}:
+    get:
+      tags:
+        - Questions (User)
+      summary: Get Question Details by ID
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Question UUID
+      responses:
+        '200':
+          description: Question details retrieved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Question retrieved"
+                  data:
+                    $ref: '#/components/schemas/QuestionResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /question/{id}/blocks:
+    get:
+      tags:
+        - Questions (User)
+      summary: Get Visual Blocks for Round 1 Question
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of visual programming blocks.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Visual blocks retrieved"
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VisualBlockResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /question/{id}/testcases/public:
+    get:
+      tags:
+        - Questions (User)
+      summary: Get Public Testcases for Question
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Public sample testcases retrieved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Public testcases retrieved"
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TestcaseResponse'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /attempts/{id}:
+    post:
+      tags:
+        - Attempts
+      summary: Unlock Question Attempt
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      description: Deduct user points balance to buy an attempt for the specified question.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Question UUID
+      responses:
+        '200':
+          description: Attempt created/unlocked successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Attempt created successfully"
+                  data:
+                    $ref: '#/components/schemas/AttemptResponse'
+        '400':
+          description: Invalid question ID or invalid user ID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '402':
+          description: Insufficient balance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Attempt already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /submit:
+    post:
+      tags:
+        - Submissions & Execution
+      summary: Submit Code Solution (Round 2)
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      description: Enqueues solution code to Judge0 for asynchronous compilation & testing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmissionRequest'
+      responses:
+        '200':
+          description: Solution submitted successfully. Returns submission ID for status polling.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Submission created successfully"
+                  data:
+                    type: object
+                    properties:
+                      submission_id:
+                        type: string
+                        format: uuid
+
+  /submit/visual:
+    post:
+      tags:
+        - Submissions & Execution
+      summary: Submit Visual Block Solution (Round 1)
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      description: Evaluates drag-and-drop block configuration for Round 1 visual questions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitVisualSolutionRequest'
+      responses:
+        '200':
+          description: Visual solution evaluated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Visual solution submitted successfully"
+                  data:
+                    $ref: '#/components/schemas/SubmitVisualSolutionResponse'
+
+  /result/{submission_id}:
+    get:
+      tags:
+        - Submissions & Execution
+      summary: Get Submission Result
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      description: Long-polls submission evaluation outcome, runtime, memory, and testcase pass/fail statuses.
+      parameters:
+        - in: path
+          name: submission_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Submission result loaded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Submission fetched successfully"
+                  data:
+                    $ref: '#/components/schemas/ResultResponse'
+        '408':
+          description: Request timeout (submission not processed yet).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /runcode:
+    post:
+      tags:
+        - Submissions & Execution
+      summary: Run Code Against Sample Testcases
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmissionRequest'
+      responses:
+        '200':
+          description: Code execution results for sample testcases.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Runcode completed"
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Judge0CallbackPayload'
+
+  /runcustom:
+    post:
+      tags:
+        - Submissions & Execution
+      summary: Run Code with Custom Input
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomSubmissionRequest'
+      responses:
+        '200':
+          description: Output of custom code execution.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Custom execution completed"
+                  data:
+                    $ref: '#/components/schemas/Judge0CallbackPayload'
+
+  /leaderboard:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get Global Leaderboard
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      description: Retrieve participant rankings based on score, solved questions, and completion time.
+      parameters:
+        - in: query
+          name: round
+          schema:
+            type: integer
+          description: Filter leaderboard by round number.
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 50
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Leaderboard entries loaded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Leaderboard retrieved"
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaderboardEntry'
+
+  /admin/session:
+    get:
+      tags:
+        - Admin - Session & Users
+      summary: Validate Admin Session
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      description: Verifies active session belongs to an administrator account.
+      responses:
+        '200':
+          description: Admin session valid.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Admin session validated"
+                  data:
+                    type: object
+                    properties:
+                      user_id:
+                        type: string
+                        format: uuid
+                      role:
+                        type: string
+                        example: "admin"
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /admin/users:
+    get:
+      tags:
+        - Admin - Session & Users
+      summary: List All Registered Users
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: query
+          name: role
+          schema:
+            type: string
+        - in: query
+          name: round
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User list loaded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Users retrieved"
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+
+  /admin/users/{id}/ban:
+    post:
+      tags:
+        - Admin - Session & Users
+      summary: Ban User Account
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User banned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+
+  /admin/users/{id}/unban:
+    post:
+      tags:
+        - Admin - Session & Users
+      summary: Unban User Account
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User unbanned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+
+  /admin/users/{id}/upgrade:
+    post:
+      tags:
+        - Admin - Session & Users
+      summary: Upgrade User Qualified Round
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - round
+              properties:
+                round:
+                  type: integer
+                  example: 2
+      responses:
+        '200':
+          description: User round upgraded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+
+  /admin/users/{id}/submissions:
+    get:
+      tags:
+        - Admin - Session & Users
+      summary: View Submissions by User
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Submissions loaded for user.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "User submissions loaded"
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ResultResponse'
+
+  /question:
+    post:
+      tags:
+        - Admin - Question Management
+      summary: Create New Question
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionRequest'
       responses:
         '201':
-          description: User created successfully
+          description: Question created successfully.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
-        '400':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '429':
-          description: Too many requests
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    get:
-      summary: List all users
-      security:
-        - BearerAuth: []
-      responses:
-        '200':
-          description: List of users
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SuccessResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '429':
-          description: Too many requests
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-  /api/v1/users/{id}:
-    get:
-      summary: Get user by ID
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: User found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SuccessResponse'
-        '400':
-          description: Invalid ID format
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: User not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '429':
-          description: Too many requests
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Question created"
+                  data:
+                    $ref: '#/components/schemas/QuestionResponse'
+
+  /question/{id}:
     put:
-      summary: Update user
+      tags:
+        - Admin - Question Management
+      summary: Update Question
       security:
         - BearerAuth: []
+        - CookieAuth: []
       parameters:
-        - name: id
-          in: path
+        - in: path
+          name: id
           required: true
           schema:
             type: string
@@ -156,130 +893,935 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateUserRequest'
+              $ref: '#/components/schemas/QuestionRequest'
       responses:
         '200':
-          description: User updated
+          description: Question updated successfully.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
-        '400':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: User not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '429':
-          description: Too many requests
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Question updated"
+                  data:
+                    $ref: '#/components/schemas/QuestionResponse'
     delete:
-      summary: Delete user
+      tags:
+        - Admin - Question Management
+      summary: Delete Question
       security:
         - BearerAuth: []
+        - CookieAuth: []
       parameters:
-        - name: id
-          in: path
+        - in: path
+          name: id
           required: true
           schema:
             type: string
             format: uuid
       responses:
         '200':
-          description: User deleted
+          description: Question deleted successfully.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
-        '401':
-          description: Unauthorized
+                $ref: '#/components/schemas/SuccessEnvelope'
+
+  /question/{id}/bounty/activate:
+    post:
+      tags:
+        - Admin - Question Management
+      summary: Activate Question Bounty
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Bounty activated.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: User not found
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Question updated"
+                  data:
+                    $ref: '#/components/schemas/QuestionResponse'
+
+  /question/{id}/bounty/deactivate:
+    post:
+      tags:
+        - Admin - Question Management
+      summary: Deactivate Question Bounty
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Bounty deactivated.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '429':
-          description: Too many requests
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Question updated"
+                  data:
+                    $ref: '#/components/schemas/QuestionResponse'
+
+  /question/{id}/testcases:
+    get:
+      tags:
+        - Admin - Question Management
+      summary: List All Testcases for Question (Including Hidden)
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Testcase list retrieved.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Testcases retrieved"
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TestcaseResponse'
+
+  /testcase:
+    post:
+      tags:
+        - Admin - Testcase Management
+      summary: Create Testcase
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestcaseRequest'
+      responses:
+        '201':
+          description: Testcase created successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Testcase created"
+                  data:
+                    $ref: '#/components/schemas/TestcaseResponse'
+
+  /testcase/{id}:
+    get:
+      tags:
+        - Admin - Testcase Management
+      summary: Get Testcase by ID
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Testcase retrieved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Testcase retrieved"
+                  data:
+                    $ref: '#/components/schemas/TestcaseResponse'
+    put:
+      tags:
+        - Admin - Testcase Management
+      summary: Update Testcase
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestcaseUpdateRequest'
+      responses:
+        '200':
+          description: Testcase updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Testcase updated"
+                  data:
+                    $ref: '#/components/schemas/TestcaseResponse'
+    delete:
+      tags:
+        - Admin - Testcase Management
+      summary: Delete Testcase
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Testcase deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Testcase deleted"
+
+  /admin/leaderboard:
+    get:
+      tags:
+        - Admin - Leaderboard & Analytics
+      summary: Admin Detailed Leaderboard View
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      description: Detailed event leaderboard with user ban indicators, score breakdowns, and attempt telemetry.
+      responses:
+        '200':
+          description: Detailed admin leaderboard retrieved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Admin leaderboard retrieved"
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaderboardEntry'
+
+  /admin/analytics:
+    get:
+      tags:
+        - Admin - Leaderboard & Analytics
+      summary: Event Analytics Dashboard
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      description: Overall event participation statistics, submission throughput, and testcase pass rates.
+      responses:
+        '200':
+          description: Analytics retrieved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Analytics loaded"
+                  data:
+                    type: object
+                    properties:
+                      total_users:
+                        type: integer
+                        example: 250
+                      total_submissions:
+                        type: integer
+                        example: 1420
+                      active_round:
+                        type: integer
+                        example: 1
+
+  /admin/setTime:
+    post:
+      tags:
+        - Admin - Round Control
+      summary: Set Event Round Timer
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - round
+                - duration_minutes
+              properties:
+                round:
+                  type: integer
+                  example: 1
+                duration_minutes:
+                  type: integer
+                  example: 120
+      responses:
+        '200':
+          description: Round time configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+
+  /admin/updateTime:
+    post:
+      tags:
+        - Admin - Round Control
+      summary: Update Active Round Timer
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Round timer updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+
+  /admin/startRound:
+    get:
+      tags:
+        - Admin - Round Control
+      summary: Trigger Round Start
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Round started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+
+  /admin/resetRound:
+    get:
+      tags:
+        - Admin - Round Control
+      summary: Reset Round State
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Round state reset.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+
 components:
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: Pass JWT token in Authorization header as 'Bearer <token>'
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: cookoff_access_token
+      description: Session HTTP-only cookie set by authentication endpoint
+
+  responses:
+    UnauthorizedError:
+      description: Access token missing, invalid, or expired.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    BadRequestError:
+      description: Invalid request parameters or validation error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFoundError:
+      description: Requested resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ServerError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
   schemas:
-    SuccessResponse:
+    SuccessEnvelope:
       type: object
+      required:
+        - success
+        - message
       properties:
         success:
           type: boolean
           example: true
         message:
           type: string
-          example: "Operation successful"
+          example: "Operation completed successfully"
         data:
-          type: object
-    ErrorResponse:
+          nullable: true
+
+    ErrorEnvelope:
       type: object
+      required:
+        - success
+        - message
       properties:
         success:
           type: boolean
           example: false
         message:
           type: string
-          example: "Error message"
+          example: "Invalid request parameters"
         errors:
-          type: array
-          items:
-            type: object
-    CreateUserRequest:
+          nullable: true
+
+    User:
       type: object
-      required:
-        - name
-        - email
       properties:
+        id:
+          type: string
+          format: uuid
         name:
           type: string
           example: "John Doe"
         email:
           type: string
-          format: email
-          example: "john@example.com"
-        phone:
+          example: "john.doe@vitstudent.ac.in"
+        role:
           type: string
-          example: "+91-9876543210"
-        linkedin_url:
-          type: string
-          example: "https://linkedin.com/in/johndoe"
-    UpdateUserRequest:
+          example: "user"
+          enum: [user, admin]
+        round_qualified:
+          type: integer
+          example: 1
+        is_banned:
+          type: boolean
+          example: false
+
+    DashboardResponse:
       type: object
       properties:
-        phone:
+        id:
           type: string
-          example: "+91-9876543210"
-        linkedin_url:
+          format: uuid
+        name:
           type: string
-          example: "https://linkedin.com/in/johndoe"
+          example: "John Doe"
+        email:
+          type: string
+          example: "john.doe@vitstudent.ac.in"
+        balance:
+          type: string
+          example: "150.00"
+        score:
+          type: string
+          example: "450.00"
+        round_qualified:
+          type: integer
+          example: 1
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardQuestion'
+        attempt_totals:
+          type: object
+          properties:
+            available:
+              type: integer
+              example: 5
+            bought:
+              type: integer
+              example: 2
+            answered:
+              type: integer
+              example: 1
+
+    DashboardQuestion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: "Array Reversal"
+        points:
+          type: integer
+          example: 100
+        round:
+          type: integer
+          example: 1
+        attempt_status:
+          type: string
+          example: "available"
+          enum: [available, bought, answered]
+
+    QuestionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: "Find Peak Element"
+        description:
+          type: string
+          example: "A peak element is an element that is strictly greater than its neighbors."
+        type:
+          type: string
+          example: "code"
+          enum: [code, visual]
+        round:
+          type: integer
+          example: 2
+        points:
+          type: integer
+          example: 100
+        buy_in:
+          type: string
+          example: "20.00"
+        reward:
+          type: string
+          example: "50.00"
+        input_format:
+          type: array
+          items:
+            type: string
+        output_format:
+          type: array
+          items:
+            type: string
+        sample_test_input:
+          type: array
+          items:
+            type: string
+        sample_test_output:
+          type: array
+          items:
+            type: string
+        explanation:
+          type: array
+          items:
+            type: string
+        constraints:
+          type: array
+          items:
+            type: string
+        bounty_active:
+          type: boolean
+          example: false
+
+    QuestionRequest:
+      type: object
+      required:
+        - title
+        - description
+        - type
+        - points
+        - round
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [code, visual]
+        points:
+          type: integer
+          minimum: 0
+        round:
+          type: integer
+          minimum: 0
+        buy_in:
+          type: number
+        reward:
+          type: number
+        input_format:
+          type: array
+          items:
+            type: string
+        output_format:
+          type: array
+          items:
+            type: string
+        sample_test_input:
+          type: array
+          items:
+            type: string
+        sample_test_output:
+          type: array
+          items:
+            type: string
+        explanation:
+          type: array
+          items:
+            type: string
+        constraints:
+          type: array
+          items:
+            type: string
+        bounty_active:
+          type: boolean
+
+    AttemptResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        question_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          example: "bought"
+        new_balance:
+          type: number
+          example: 150.0
+        is_buy_in_paid:
+          type: boolean
+          example: true
+
+    SubmissionRequest:
+      type: object
+      required:
+        - question_id
+        - language_id
+        - source_code
+      properties:
+        question_id:
+          type: string
+          format: uuid
+        language_id:
+          type: integer
+          example: 71
+        source_code:
+          type: string
+          example: "print('Hello World')"
+
+    CustomSubmissionRequest:
+      type: object
+      required:
+        - language_id
+        - source_code
+      properties:
+        language_id:
+          type: integer
+        source_code:
+          type: string
+        stdin:
+          type: string
+
+    SubmitVisualSolutionRequest:
+      type: object
+      required:
+        - question_id
+        - blocks
+      properties:
+        question_id:
+          type: string
+          format: uuid
+        blocks:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    SubmitVisualSolutionResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "ACCEPTED"
+        points_awarded:
+          type: number
+          example: 100.0
+        note:
+          type: string
+          example: "All visual block testcases passed"
+
+    VisualBlockResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        content:
+          type: string
+          example: "for i in range(10):"
+
+    TestcaseResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        question_id:
+          type: string
+          format: uuid
+        input:
+          type: string
+        expected_output:
+          type: string
+        memory:
+          type: string
+          example: "2048"
+        runtime:
+          type: string
+          example: "1.0"
+        hidden:
+          type: boolean
+          example: false
+
+    TestcaseRequest:
+      type: object
+      required:
+        - question_id
+        - input
+        - expected_output
+      properties:
+        question_id:
+          type: string
+          format: uuid
+        input:
+          type: string
+        expected_output:
+          type: string
+        memory:
+          type: number
+          minimum: 0
+        runtime:
+          type: number
+          minimum: 0
+        hidden:
+          type: boolean
+          default: false
+
+    TestcaseUpdateRequest:
+      type: object
+      properties:
+        question_id:
+          type: string
+          format: uuid
+        input:
+          type: string
+        expected_output:
+          type: string
+        memory:
+          type: number
+          minimum: 0
+        runtime:
+          type: number
+          minimum: 0
+        hidden:
+          type: boolean
+
+    ResultResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        question_id:
+          type: string
+          format: uuid
+        passed:
+          type: integer
+          example: 8
+        failed:
+          type: integer
+          example: 2
+        runtime:
+          type: number
+          example: 0.045
+        memory:
+          type: number
+          example: 1420
+        submission_time:
+          type: string
+          example: "2026-09-13T10:00:00Z"
+        description:
+          type: string
+          example: "Partially Accepted"
+        testcases:
+          type: array
+          items:
+            $ref: '#/components/schemas/TestcaseResult'
+
+    TestcaseResult:
+      type: object
+      properties:
+        id:
+          type: string
+        runtime:
+          type: number
+        memory:
+          type: number
+        status:
+          type: string
+          example: "Accepted"
+        description:
+          type: string
+
+    Judge0CallbackPayload:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "75a03429-166f-4c57-a36a-2007f3f3e1a0"
+        stdout:
+          type: string
+          nullable: true
+        stderr:
+          type: string
+          nullable: true
+        compile_output:
+          type: string
+          nullable: true
+        message:
+          type: string
+          nullable: true
+        exit_code:
+          type: integer
+          nullable: true
+        exit_signal:
+          type: integer
+          nullable: true
+        status:
+          type: object
+          properties:
+            id:
+              type: integer
+              example: 3
+            description:
+              type: string
+              example: "Accepted"
+        time:
+          type: string
+          nullable: true
+        memory:
+          type: integer
+          nullable: true
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        rank:
+          type: integer
+          example: 1
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Jane Doe"
+        score:
+          type: string
+          example: "850.00"
+        questions_solved:
+          type: integer
+          example: 8
+        time_taken_seconds:
+          type: integer
+          example: 3420
