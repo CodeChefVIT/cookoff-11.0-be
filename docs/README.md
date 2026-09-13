@@ -17,10 +17,14 @@ This directory contains system architecture specifications, OpenAPI schemas, HLD
    ```
 
 ### Docker Development
-1. Build and run via Docker Compose:
-   ```bash
-   docker compose up --build
-   ```
+Production-mode stack (postgres, redis, migrate, api, worker):
+```bash
+make docker-up
+```
+Hot-reload dev stack (bind-mounted source, air):
+```bash
+make dev-up
+```
 
 ## Interactive API Docs
 Once running, visit `http://localhost:8080/docs` to view the interactive Scalar API documentation UI.
