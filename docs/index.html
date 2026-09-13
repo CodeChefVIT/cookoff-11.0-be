@@ -9,7 +9,6 @@
   <style>
     html {
       box-sizing: border-box;
-      overflow: -moz-scrollbars-vertical;
       overflow-y: scroll;
     }
     *, *:before, *:after {
@@ -17,49 +16,138 @@
     }
     body {
       margin: 0;
-      background: #0f172a;
-      color: #f8fafc;
+      background: #ffffff;
+      color: #0f172a;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    }
-    .swagger-ui {
-      filter: invert(88%) hue-rotate(180deg);
-    }
-    .swagger-ui .topbar {
-      display: none;
-    }
-    .swagger-ui img {
-      filter: invert(100%) hue-rotate(180deg);
+      transition: background-color 0.3s ease, color 0.3s ease;
     }
     .custom-header {
-      background: #1e293b;
-      padding: 1rem 2rem;
-      border-bottom: 1px solid #334155;
+      background: #ffffff;
+      padding: 0.875rem 2rem;
+      border-bottom: 1px solid #e2e8f0;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+      transition: background-color 0.3s ease, border-color 0.3s ease;
     }
     .custom-header h1 {
       margin: 0;
       font-size: 1.25rem;
-      color: #38bdf8;
+      color: #0284c7;
       font-weight: 600;
     }
-    .custom-header span {
+    .custom-header .sub-text {
       font-size: 0.875rem;
+      color: #64748b;
+      margin-left: 0.5rem;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .theme-toggle-btn {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      color: #334155;
+      padding: 0.4rem 0.85rem;
+      border-radius: 0.375rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s ease;
+    }
+    .theme-toggle-btn:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+    }
+    .swagger-ui .topbar {
+      display: none;
+    }
+
+    /* Dark Mode Styles */
+    body.dark-mode {
+      background: #0f172a;
+      color: #f8fafc;
+    }
+    body.dark-mode .custom-header {
+      background: #1e293b;
+      border-color: #334155;
+    }
+    body.dark-mode .custom-header h1 {
+      color: #38bdf8;
+    }
+    body.dark-mode .custom-header .sub-text {
       color: #94a3b8;
+    }
+    body.dark-mode .theme-toggle-btn {
+      background: #334155;
+      border-color: #475569;
+      color: #f8fafc;
+    }
+    body.dark-mode .theme-toggle-btn:hover {
+      background: #475569;
+    }
+    body.dark-mode #swagger-ui {
+      filter: invert(88%) hue-rotate(180deg);
+    }
+    body.dark-mode #swagger-ui img {
+      filter: invert(100%) hue-rotate(180deg);
     }
   </style>
 </head>
 <body>
   <div class="custom-header">
-    <h1>CodeChefVIT Cookoff 11.0 API Docs</h1>
-    <span>OpenAPI 3.0 Specification</span>
+    <div>
+      <h1>CodeChefVIT Cookoff 11.0 API Docs</h1>
+      <span class="sub-text">OpenAPI 3.0 Specification</span>
+    </div>
+    <div class="header-actions">
+      <button id="theme-toggle" class="theme-toggle-btn" onclick="toggleTheme()">
+        <span id="theme-icon">🌙</span> <span id="theme-text">Dark Mode</span>
+      </button>
+    </div>
   </div>
+
   <div id="swagger-ui"></div>
 
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js" charset="UTF-8"> </script>
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js" charset="UTF-8"> </script>
   <script>
+    function applyTheme(isDark) {
+      const body = document.body;
+      const themeIcon = document.getElementById('theme-icon');
+      const themeText = document.getElementById('theme-text');
+      if (isDark) {
+        body.classList.add('dark-mode');
+        themeIcon.textContent = '☀️';
+        themeText.textContent = 'Light Mode';
+        localStorage.setItem('theme', 'dark');
+      } else {
+        body.classList.remove('dark-mode');
+        themeIcon.textContent = '🌙';
+        themeText.textContent = 'Dark Mode';
+        localStorage.setItem('theme', 'light');
+      }
+    }
+
+    function toggleTheme() {
+      const isDark = !document.body.classList.contains('dark-mode');
+      applyTheme(isDark);
+    }
+
+    // Initialize theme based on localStorage preference (default: Light Mode)
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+      applyTheme(true);
+    } else {
+      applyTheme(false);
+    }
+
     window.onload = function() {
       const ui = SwaggerUIBundle({
         url: "./docs.yaml",
