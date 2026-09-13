@@ -5,6 +5,12 @@ WHERE user_id = $1
   AND question_id = $2
 FOR UPDATE;
 
+-- name: GetAttempt :one
+SELECT *
+FROM attempts
+WHERE user_id = $1
+  AND question_id = $2;
+
 
 -- name: GetUserBalanceForUpdate :one
 SELECT balance
@@ -54,4 +60,4 @@ SET
     is_buy_in_paid = true
 WHERE user_id = $1
   AND question_id = $2
-RETURNING *;
+RETURNING *;

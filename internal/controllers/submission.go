@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/submission"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
 )
 
@@ -48,10 +50,30 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
 	}
 
+	ctx := c.Request().Context()
+
+	// The buy-in/reward economy applies to every round's code questions, not
+	// just the visual one — mirrors the same check submit_round1.go already
+	// performs for visual submissions. Without this, a user can skip
+	// POST /attempts/:id entirely and still collect the reward on a correct
+	// submission, since EnsureAttempt would otherwise silently backfill an
+	// attempt row at result-finalize time.
+	attempt, err := db.Queries.GetAttempt(ctx, sqlc.GetAttemptParams{
+		UserID:     userID,
+		QuestionID: questionID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Question not purchased — buy this question before submitting", nil))
+		}
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
+	}
+	if !attemptAllowsSubmission(attempt.Status) {
+		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Question not purchased — buy this question before submitting", nil))
+	}
+
 	submissionID := uuid.New()
 	logging.Infof("Created submission ID: %v", submissionID)
-
-	ctx := c.Request().Context()
 
 	//fetch testcases from db
 	testcases, err := db.Queries.GetAllTestCasesByQuestion(ctx, questionID)
@@ -130,4 +152,13 @@ func SubmitCode(c echo.Context) error {
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission created successfully", echo.Map{
 		"submission_id": submissionID,
 	}))
+}
+
+// attemptAllowsSubmission reports whether an attempt's status permits a code
+// submission to be judged. Mirrors the check submit_round1.go already
+// performs for visual submissions — "available" (or a missing row) must
+// never reach Judge0, since EnsureAttempt would otherwise silently backfill
+// an unpaid attempt at result-finalize time and still pay out the reward.
+func attemptAllowsSubmission(status string) bool {
+	return status == "bought" || status == "answered"
 }

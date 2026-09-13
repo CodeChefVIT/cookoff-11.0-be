@@ -23,6 +23,7 @@ type Querier interface {
 	DeleteTestCase(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	EnsureAttempt(ctx context.Context, arg EnsureAttemptParams) error
 	GetAllTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]Testcase, error)
+	GetAttempt(ctx context.Context, arg GetAttemptParams) (Attempt, error)
 	GetAttemptForUpdate(ctx context.Context, arg GetAttemptForUpdateParams) (Attempt, error)
 	GetPublicTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]Testcase, error)
 	GetQuestionBuyIn(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
