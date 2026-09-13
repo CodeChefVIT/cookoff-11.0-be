@@ -314,6 +314,64 @@ paths:
                     $ref: '#/components/schemas/QuestionResponse'
         '404':
           $ref: '#/components/responses/NotFoundError'
+    put:
+      tags:
+        - Admin - Question Management
+      summary: Update Question
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionRequest'
+      responses:
+        '200':
+          description: Question updated successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Question updated"
+                  data:
+                    $ref: '#/components/schemas/QuestionResponse'
+    delete:
+      tags:
+        - Admin - Question Management
+      summary: Delete Question
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Question deleted successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+
 
   /question/{id}/blocks:
     get:
@@ -872,65 +930,6 @@ paths:
                     example: "Question created"
                   data:
                     $ref: '#/components/schemas/QuestionResponse'
-
-  /question/{id}:
-    put:
-      tags:
-        - Admin - Question Management
-      summary: Update Question
-      security:
-        - BearerAuth: []
-        - CookieAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/QuestionRequest'
-      responses:
-        '200':
-          description: Question updated successfully.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: "Question updated"
-                  data:
-                    $ref: '#/components/schemas/QuestionResponse'
-    delete:
-      tags:
-        - Admin - Question Management
-      summary: Delete Question
-      security:
-        - BearerAuth: []
-        - CookieAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Question deleted successfully.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SuccessEnvelope'
 
   /question/{id}/bounty/activate:
     post:
