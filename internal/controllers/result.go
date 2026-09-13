@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/labstack/echo/v4"
 
@@ -16,38 +17,40 @@ import (
 )
 
 func GetResult(c echo.Context) error {
-
 	ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Minute)
 	defer cancel()
-    
+
 	submissionID, err := uuid.Parse(c.Param("submission_id"))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(1 * time.Second) // cheap now, so we can check more often
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return c.JSON(http.StatusRequestTimeout, map[string]string{"error": "submission not processed yet"})
-
 		case <-ticker.C:
-			status, err := db.Queries.GetSubmissionStatusByID(ctx, submissionID)
-			if err != nil || status == nil {
-				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get submission status"})
+			var result dto.ResultResponse
+			err := utils.GetCache(ctx, utils.SubmissionResultKey(submissionID.String()), &result)
+			if err == nil {
+				return c.JSON(http.StatusOK, result) // cache hit -- zero Postgres queries
 			}
-
-			//other status stuff, im not sure abt
-			if *status != utils.Judge0InQueue.GetJudge0Status() && *status != utils.Judge0Processing.GetJudge0Status() {
-				result, err := getSubmissionResult(ctx, submissionID)
-				if err != nil {
-					return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			if !errors.Is(err, redis.Nil) {
+				// Redis itself is having a bad day -- fall back to Postgres
+				// so results still get delivered instead of hanging forever.
+				status, dbErr := db.Queries.GetSubmissionStatusByID(ctx, submissionID)
+				if dbErr == nil && status != nil &&
+					*status != utils.Judge0InQueue.GetJudge0Status() &&
+					*status != utils.Judge0Processing.GetJudge0Status() {
+					if res, resErr := getSubmissionResult(ctx, submissionID); resErr == nil {
+						return c.JSON(http.StatusOK, res)
+					}
 				}
-				return c.JSON(http.StatusOK, result)
-
 			}
+			// redis.Nil just means "not finished yet" -- keep polling, no DB hit.
 		}
 	}
 }
