@@ -46,6 +46,7 @@ type Querier interface {
 	ListVisualSolutionsByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualSolution, error)
 	SetQuestionBountyActive(ctx context.Context, arg SetQuestionBountyActiveParams) (Question, error)
 	UpdateAttemptStatus(ctx context.Context, arg UpdateAttemptStatusParams) error
+	UpdateAttemptToBought(ctx context.Context, arg UpdateAttemptToBoughtParams) (Attempt, error)
 	UpdateQuestion(ctx context.Context, arg UpdateQuestionParams) (Question, error)
 	UpdateSubmissionStatus(ctx context.Context, arg UpdateSubmissionStatusParams) error
 	UpdateTestCase(ctx context.Context, arg UpdateTestCaseParams) (Testcase, error)

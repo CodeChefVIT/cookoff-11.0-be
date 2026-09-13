@@ -131,6 +131,36 @@ func (q *Queries) GetUserBalanceForUpdate(ctx context.Context, id uuid.UUID) (pg
 	return balance, err
 }
 
+const updateAttemptToBought = `-- name: UpdateAttemptToBought :one
+UPDATE attempts
+SET
+    status = 'bought',
+    is_buy_in_paid = true
+WHERE user_id = $1
+  AND question_id = $2
+RETURNING id, user_id, question_id, status, is_buy_in_paid, attempted_at, answered_at
+`
+
+type UpdateAttemptToBoughtParams struct {
+	UserID     uuid.UUID
+	QuestionID uuid.UUID
+}
+
+func (q *Queries) UpdateAttemptToBought(ctx context.Context, arg UpdateAttemptToBoughtParams) (Attempt, error) {
+	row := q.db.QueryRow(ctx, updateAttemptToBought, arg.UserID, arg.QuestionID)
+	var i Attempt
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.QuestionID,
+		&i.Status,
+		&i.IsBuyInPaid,
+		&i.AttemptedAt,
+		&i.AnsweredAt,
+	)
+	return i, err
+}
+
 const updateUserBalance = `-- name: UpdateUserBalance :exec
 UPDATE users
 SET balance = $1

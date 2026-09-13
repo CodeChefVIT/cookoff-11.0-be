@@ -46,3 +46,12 @@ RETURNING *;
 INSERT INTO attempts (id, user_id, question_id, status, is_buy_in_paid)
 VALUES ($1, $2, $3, 'bought', false)
 ON CONFLICT ON CONSTRAINT uq_attempts_user_question DO NOTHING;
+
+-- name: UpdateAttemptToBought :one
+UPDATE attempts
+SET
+    status = 'bought',
+    is_buy_in_paid = true
+WHERE user_id = $1
+  AND question_id = $2
+RETURNING *;
