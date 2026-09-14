@@ -11,6 +11,8 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 )
@@ -22,6 +24,27 @@ func GetResult(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
 	}
+
+	submission, err := db.Queries.GetSubmissionByID(ctx, submissionID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError ,dto.NewErrorResponse("Failed to get submission from database", nil))
+	}
+
+	//check the userid, and if they own the submission
+	userIDStr, ok := c.Get(middlewares.UserIDKey).(string)
+	if !ok || userIDStr == "" {
+		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Unauthorized", nil))
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Invalid user id", nil))
+	}
+
+	if userID!=submission.UserID{
+		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Submission not owned by user", nil))
+	}
+
 
 	var result dto.ResultResponse
 
@@ -39,7 +62,7 @@ func GetResult(c echo.Context) error {
 		if *status == utils.Judge0InQueue.GetJudge0Status() || *status == utils.Judge0Processing.GetJudge0Status(){
 			return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission is being processed", status))
 		} else {
-			if result, resErr := getSubmissionResult(ctx, submissionID); resErr == nil {
+			if result, resErr := getSubmissionResult(ctx, submission); resErr == nil {
 				return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", result))
 			}
 			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch submission", nil))
@@ -51,15 +74,12 @@ func GetResult(c echo.Context) error {
 
 }
 
-func getSubmissionResult(ctx context.Context, submissionID uuid.UUID) (dto.ResultResponse, error) {
-	results, err := db.Queries.GetSubmissionResults(ctx, submissionID)
+func getSubmissionResult(ctx context.Context, submission sqlc.Submission) (dto.ResultResponse, error) {
+	results, err := db.Queries.GetSubmissionResults(ctx, submission.ID)
 	if err != nil {
 		return dto.ResultResponse{}, errors.New("failed to get submission result from database")
 	}
-	submission, err := db.Queries.GetSubmissionByID(ctx, submissionID)
-	if err != nil {
-		return dto.ResultResponse{}, errors.New("failed to get submission from database")
-	}
+
 
 	testcases := make([]dto.TestcaseResult, len(results))
 
@@ -110,7 +130,7 @@ func getSubmissionResult(ctx context.Context, submissionID uuid.UUID) (dto.Resul
 	}
 
 	return dto.ResultResponse{
-		ID:             submissionID.String(),
+		ID:             submission.ID.String(),
 		QuestionID:     submission.QuestionID.String(),
 		Passed:         passed,
 		Failed:         failed,
