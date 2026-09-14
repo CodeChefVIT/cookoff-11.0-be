@@ -6,20 +6,19 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
-
+	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
 
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
 )
 
 func GetResult(c echo.Context) error {
-	ctx:=c.Request().Context()
-	
+	ctx := c.Request().Context()
+
 	submissionID, err := uuid.Parse(c.Param("submission_id"))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
@@ -27,10 +26,12 @@ func GetResult(c echo.Context) error {
 
 	submission, err := db.Queries.GetSubmissionByID(ctx, submissionID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError ,dto.NewErrorResponse("Failed to get submission from database", nil))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return c.JSON(http.StatusNotFound, dto.NewErrorResponse("Submission not found", nil))
+		}
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to get submission from database", nil))
 	}
 
-	//check the userid, and if they own the submission
 	userIDStr, ok := c.Get(middlewares.UserIDKey).(string)
 	if !ok || userIDStr == "" {
 		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Unauthorized", nil))
@@ -41,37 +42,29 @@ func GetResult(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Invalid user id", nil))
 	}
 
-	if userID!=submission.UserID{
-		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Submission not owned by user", nil))
+	if userID != submission.UserID {
+		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Submission not owned by user", nil))
 	}
 
-
 	var result dto.ResultResponse
-
 	err = utils.GetCache(ctx, utils.SubmissionResultKey(submissionID.String()), &result)
 	if err == nil {
 		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", result))
 	}
-	if !errors.Is(err, redis.Nil) {
-		status, err := db.Queries.GetSubmissionStatusByID(ctx, submissionID)
-		
-		if err!=nil || status==nil{
-			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to get submission status", nil))
-		}
 
-		if *status == utils.Judge0InQueue.GetJudge0Status() || *status == utils.Judge0Processing.GetJudge0Status(){
-			return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission is being processed", status))
-		} else {
-			if result, resErr := getSubmissionResult(ctx, submission); resErr == nil {
-				return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", result))
-			}
-			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch submission", nil))
-		}
+	// Cache miss or error: check DB status
+	if submission.Status != nil &&
+		(*submission.Status == utils.Judge0InQueue.GetJudge0Status() ||
+			*submission.Status == utils.Judge0Processing.GetJudge0Status()) {
+		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission is being processed", submission.Status))
 	}
 
-	return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to get submission", nil))
+	res, resErr := getSubmissionResult(ctx, submission)
+	if resErr != nil {
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch submission result", nil))
+	}
 
-
+	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", res))
 }
 
 func getSubmissionResult(ctx context.Context, submission sqlc.Submission) (dto.ResultResponse, error) {
@@ -79,7 +72,6 @@ func getSubmissionResult(ctx context.Context, submission sqlc.Submission) (dto.R
 	if err != nil {
 		return dto.ResultResponse{}, errors.New("failed to get submission result from database")
 	}
-
 
 	testcases := make([]dto.TestcaseResult, len(results))
 
