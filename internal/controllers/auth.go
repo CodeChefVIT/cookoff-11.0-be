@@ -180,10 +180,23 @@ func (ac *AuthController) googleIdentity(ctx context.Context, code string) (goog
 func (ac *AuthController) findUser(ctx context.Context, identity googleIdentity) (sqlc.User, error) {
 	googleID := identity.Subject
 	user, err := ac.queries.GetUserByGoogleID(ctx, &googleID)
+	if err == nil {
+		return user, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.User{}, err
+	}
+	// No account claimed by this Google identity yet: check for a
+	// pre-seeded account matching the verified email and link it.
+	user, err = ac.queries.GetUserByEmail(ctx, identity.Email)
 	if err != nil {
 		return sqlc.User{}, err
 	}
-	return user, nil
+	linked, err := ac.queries.LinkGoogleID(ctx, sqlc.LinkGoogleIDParams{ID: user.ID, GoogleID: &googleID})
+	if err != nil {
+		return sqlc.User{}, err
+	}
+	return linked, nil
 }
 
 func redirectURL(role string) string {
