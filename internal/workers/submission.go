@@ -286,9 +286,6 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		Description:    overallDesc,
 		Testcases:      testcaseResults,
 	}
-	//implementing the partial scoring system: the failed >0 check is
-	// kept to ensure we are only rewarding when all testcases pass.
-	//simply moving the scoring logic to before the failed check
 
 	question, err := qtx.GetQuestionByID(ctx, submission.QuestionID)
 	if err != nil {
