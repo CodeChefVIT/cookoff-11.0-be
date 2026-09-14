@@ -1,0 +1,49 @@
+# Development overlay: hot-reload api/worker against the same
+# postgres/redis/migrate stack as production. Dockerfile.dev is a single
+# stage (no api/worker/migrate targets), so `build.target` from the base
+# file must be explicitly cleared with `!reset`.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+# or: make dev-up
+services:
+  migrate:
+    build:
+      dockerfile: Dockerfile.dev
+      target: !reset null
+    entrypoint: ["go", "run", "./cmd/migrate"]
+    command: ["up"]
+    volumes:
+      - .:/app
+
+  api:
+    build:
+      dockerfile: Dockerfile.dev
+      target: !reset null
+    container_name: cookoff_11_api_dev
+    environment:
+      - ENV=development
+    volumes:
+      - .:/app
+      - api_gocache:/root/.cache/go-build
+      - api_gomod:/go/pkg/mod
+    command: ["air", "-c", ".air.toml"]
+
+  worker:
+    build:
+      dockerfile: Dockerfile.dev
+      target: !reset null
+    container_name: cookoff_11_worker_dev
+    environment:
+      - ENV=development
+    volumes:
+      - .:/app
+      - worker_gocache:/root/.cache/go-build
+      - worker_gomod:/go/pkg/mod
+    entrypoint: ["go", "run", "./cmd/worker"]
+
+volumes:
+  api_gocache:
+  api_gomod:
+  worker_gocache:
+  worker_gomod:
