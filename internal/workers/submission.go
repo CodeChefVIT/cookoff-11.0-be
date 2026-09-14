@@ -292,16 +292,29 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		return dto.ResultResponse{}, fmt.Errorf("get question: %w", err)
 	}
 
-	//calculate the number oftotal testcases
+	// Calculate total testcases and compute partial score safely (avoid division by zero NaN)
 	total := passed + failed
+	var partialScore float64
+	if total > 0 {
+		partialScore = (float64(passed) / float64(total)) * float64(question.Points)
+	}
 
-	//calculating the partial score based on the docs
-	partialScore := float64(passed) / float64(total) * float64(question.Points)
+	// Lock user score row to ensure thread-safe score delta calculations
+	scoreNumeric, err := qtx.GetUserScoreForUpdate(ctx, submission.UserID)
+	if err != nil {
+		return dto.ResultResponse{}, fmt.Errorf("get user score: %w", err)
+	}
 
-	//querying through users's previous submissions on that question to get the best score
+	score, err := utils.NumericToFloat64(scoreNumeric)
+	if err != nil {
+		return dto.ResultResponse{}, fmt.Errorf("convert score: %w", err)
+	}
+
+	// Query user's best score on this question, excluding current submission
 	bestScoreNumeric, err := qtx.GetBestScoreForQuestion(ctx, sqlc.GetBestScoreForQuestionParams{
 		UserID:     submission.UserID,
 		QuestionID: submission.QuestionID,
+		ID:         submissionID,
 	})
 	if err != nil {
 		return dto.ResultResponse{}, fmt.Errorf("get best score for question: %w", err)
@@ -312,21 +325,8 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		return dto.ResultResponse{}, fmt.Errorf("convert best score: %w", err)
 	}
 
-	//we only need to update the score if the current submission score is higher than the
-	// previous best score
-
+	// Update user score if current submission score exceeds previous best
 	if partialScore > bestScore {
-		// Lock score before balance to prevent deadlocks
-		scoreNumeric, err := qtx.GetUserScoreForUpdate(ctx, submission.UserID)
-		if err != nil {
-			return dto.ResultResponse{}, fmt.Errorf("get user score: %w", err)
-		}
-
-		score, err := utils.NumericToFloat64(scoreNumeric)
-		if err != nil {
-			return dto.ResultResponse{}, fmt.Errorf("convert score: %w", err)
-		}
-
 		scoreDiff := partialScore - bestScore
 
 		newScoreNumeric, err := utils.Float64ToNumeric(score + scoreDiff)
@@ -342,9 +342,9 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		}
 	}
 
-	//this check is used to ensure that we only reward the user when they have passed all the tescases
+	// Only award currency reward and mark attempt answered if 100% testcases passed
 	if failed > 0 {
-		return response, nil // not a full solve -- no reward/score to hand out
+		return response, nil // not a full solve -- no reward to hand out
 	}
 
 	attempt, err := qtx.GetAttemptForUpdate(ctx, sqlc.GetAttemptForUpdateParams{
@@ -420,7 +420,7 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		return dto.ResultResponse{}, fmt.Errorf("update attempt status: %w", err)
 	}
 
-	logging.Infof("submission %s finalized: user=%s question=%s reward=%.2f points=%d",
+	logging.Infof("submission %s finalized: user=%s question=%s reward=%.2f partial_score=%.2f",
 		submissionID, submission.UserID, submission.QuestionID, reward, partialScore)
 	return response, nil
 }

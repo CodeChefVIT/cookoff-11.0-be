@@ -32,17 +32,18 @@ SELECT (
 	COALESCE(
 		MAX(
 			(
-				testcases_passed::numeric /
+				COALESCE(testcases_passed, 0)::numeric /
 				NULLIF(
-				(testcases_passed + testcases_failed)::numeric
-				,0::numeric
+					(COALESCE(testcases_passed, 0) + COALESCE(testcases_failed, 0))::numeric,
+					0::numeric
 				)
-			)*questions.points::numeric
+			) * questions.points::numeric
 		),
 		0::numeric
 	)
- )::numeric AS best_score
+)::numeric AS best_score
 FROM submissions
 JOIN questions ON submissions.question_id = questions.id
 WHERE submissions.user_id = $1
-AND submissions.question_id = $2;
+  AND submissions.question_id = $2
+  AND submissions.id != $3;
