@@ -286,7 +286,66 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		Description:    overallDesc,
 		Testcases:      testcaseResults,
 	}
+	//implementing the partial scoring system: the failed >0 check is
+	// kept to ensure we are only rewarding when all testcases pass.
+	//simply moving the scoring logic to before the failed check
 
+	question, err := qtx.GetQuestionByID(ctx, submission.QuestionID)
+	if err != nil {
+		return dto.ResultResponse{}, fmt.Errorf("get question: %w", err)
+	}
+
+	//calculate the number oftotal testcases
+	total := passed + failed
+
+	//calculating the partial score based on the docs
+	partialScore := float64(passed) / float64(total) * float64(question.Points)
+
+	//querying through users's previous submissions on that question to get the best score
+	bestScoreNumeric, err := qtx.GetBestScoreForQuestion(ctx, sqlc.GetBestScoreForQuestionParams{
+		UserID:     submission.UserID,
+		QuestionID: submission.QuestionID,
+	})
+	if err != nil {
+		return dto.ResultResponse{}, fmt.Errorf("get best score for question: %w", err)
+	}
+
+	bestScore, err := utils.NumericToFloat64(bestScoreNumeric)
+	if err != nil {
+		return dto.ResultResponse{}, fmt.Errorf("convert best score: %w", err)
+	}
+
+	//we only need to update the score if the current submission score is higher than the
+	// previous best score
+
+	if partialScore > bestScore {
+		// Lock score before balance to prevent deadlocks
+		scoreNumeric, err := qtx.GetUserScoreForUpdate(ctx, submission.UserID)
+		if err != nil {
+			return dto.ResultResponse{}, fmt.Errorf("get user score: %w", err)
+		}
+
+		score, err := utils.NumericToFloat64(scoreNumeric)
+		if err != nil {
+			return dto.ResultResponse{}, fmt.Errorf("convert score: %w", err)
+		}
+
+		scoreDiff := partialScore - bestScore
+
+		newScoreNumeric, err := utils.Float64ToNumeric(score + scoreDiff)
+		if err != nil {
+			return dto.ResultResponse{}, fmt.Errorf("convert new score: %w", err)
+		}
+
+		if err := qtx.UpdateUserScore(ctx, sqlc.UpdateUserScoreParams{
+			ID:    submission.UserID,
+			Score: newScoreNumeric,
+		}); err != nil {
+			return dto.ResultResponse{}, fmt.Errorf("update user score: %w", err)
+		}
+	}
+
+	//this check is used to ensure that we only reward the user when they have passed all the tescases
 	if failed > 0 {
 		return response, nil // not a full solve -- no reward/score to hand out
 	}
@@ -327,10 +386,6 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		return response, nil
 	}
 
-	question, err := qtx.GetQuestionByID(ctx, submission.QuestionID)
-	if err != nil {
-		return dto.ResultResponse{}, fmt.Errorf("get question: %w", err)
-	}
 	rewardNumeric, err := qtx.GetQuestionReward(ctx, submission.QuestionID)
 	if err != nil {
 		return dto.ResultResponse{}, fmt.Errorf("get question reward: %w", err)
@@ -338,26 +393,6 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	reward, err := utils.NumericToFloat64(rewardNumeric)
 	if err != nil {
 		reward = 0
-	}
-
-	// Lock score before balance to prevent deadlocks
-	scoreNumeric, err := qtx.GetUserScoreForUpdate(ctx, submission.UserID)
-	if err != nil {
-		return dto.ResultResponse{}, fmt.Errorf("get user score: %w", err)
-	}
-	score, err := utils.NumericToFloat64(scoreNumeric)
-	if err != nil {
-		return dto.ResultResponse{}, fmt.Errorf("convert score: %w", err)
-	}
-	newScoreNumeric, err := utils.Float64ToNumeric(score + float64(question.Points))
-	if err != nil {
-		return dto.ResultResponse{}, fmt.Errorf("convert new score: %w", err)
-	}
-	if updateScoreErr := qtx.UpdateUserScore(ctx, sqlc.UpdateUserScoreParams{
-		ID:    submission.UserID,
-		Score: newScoreNumeric,
-	}); updateScoreErr != nil {
-		return dto.ResultResponse{}, fmt.Errorf("update user score: %w", updateScoreErr)
 	}
 
 	balanceNumeric, err := qtx.GetUserBalanceForUpdate(ctx, submission.UserID)
@@ -389,6 +424,6 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	}
 
 	logging.Infof("submission %s finalized: user=%s question=%s reward=%.2f points=%d",
-		submissionID, submission.UserID, submission.QuestionID, reward, question.Points)
+		submissionID, submission.UserID, submission.QuestionID, reward, partialScore)
 	return response, nil
 }
