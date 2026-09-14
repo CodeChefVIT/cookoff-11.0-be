@@ -163,7 +163,7 @@ func (ac *AuthController) googleIdentity(ctx context.Context, code string) (goog
 	var info struct {
 		Subject       string `json:"sub"`
 		Email         string `json:"email"`
-		EmailVerified string `json:"email_verified"`
+		EmailVerified bool   `json:"email_verified"`
 		Name          string `json:"name"`
 		Audience      string `json:"aud"`
 		Issuer        string `json:"iss"`
@@ -171,7 +171,7 @@ func (ac *AuthController) googleIdentity(ctx context.Context, code string) (goog
 	if err := json.NewDecoder(response.Body).Decode(&info); err != nil {
 		return googleIdentity{}, err
 	}
-	if info.Subject == "" || info.Email == "" || info.EmailVerified != "true" || info.Audience != utils.Config.GoogleClientID || (info.Issuer != "accounts.google.com" && info.Issuer != "https://accounts.google.com") {
+	if info.Subject == "" || info.Email == "" || !info.EmailVerified || info.Audience != utils.Config.GoogleClientID || (info.Issuer != "accounts.google.com" && info.Issuer != "https://accounts.google.com") {
 		return googleIdentity{}, fmt.Errorf("unverified Google identity")
 	}
 	return googleIdentity{Subject: info.Subject, Email: info.Email, Name: info.Name}, nil

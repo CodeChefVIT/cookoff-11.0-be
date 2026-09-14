@@ -52,6 +52,26 @@ func SubmitCode(c echo.Context) error {
 
 	ctx := c.Request().Context()
 
+	user, err := db.Queries.GetUserByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("User not found", nil))
+		}
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch user", nil))
+	}
+
+	question, err := db.Queries.GetQuestionByID(ctx, questionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return c.JSON(http.StatusNotFound, dto.NewErrorResponse("Question not found", nil))
+		}
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch question", nil))
+	}
+
+	if user.RoundQualified != question.Round {
+		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("User not qualified for this round", nil))
+	}
+
 	// The buy-in/reward economy applies to every round's code questions, not
 	// just the visual one — mirrors the same check submit_round1.go already
 	// performs for visual submissions. Without this, a user can skip
