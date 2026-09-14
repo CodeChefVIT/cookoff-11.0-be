@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -17,42 +16,39 @@ import (
 )
 
 func GetResult(c echo.Context) error {
-	ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Minute)
-	defer cancel()
-
+	ctx:=c.Request().Context()
+	
 	submissionID, err := uuid.Parse(c.Param("submission_id"))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
 	}
 
-	ticker := time.NewTicker(1 * time.Second) // cheap now, so we can check more often
-	defer ticker.Stop()
+	var result dto.ResultResponse
 
-	for {
-		select {
-		case <-ctx.Done():
-			return c.JSON(http.StatusRequestTimeout, dto.NewErrorResponse("Submission not processed yet", nil))
-		case <-ticker.C:
-			var result dto.ResultResponse
-			err := utils.GetCache(ctx, utils.SubmissionResultKey(submissionID.String()), &result)
-			if err == nil {
-				return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", result)) // cache hit -- zero Postgres queries
+	err = utils.GetCache(ctx, utils.SubmissionResultKey(submissionID.String()), &result)
+	if err == nil {
+		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", result))
+	}
+	if !errors.Is(err, redis.Nil) {
+		status, err := db.Queries.GetSubmissionStatusByID(ctx, submissionID)
+		
+		if err!=nil || status==nil{
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to get submission status", nil))
+		}
+
+		if *status == utils.Judge0InQueue.GetJudge0Status() || *status == utils.Judge0Processing.GetJudge0Status(){
+			return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission is being processed", status))
+		} else {
+			if result, resErr := getSubmissionResult(ctx, submissionID); resErr == nil {
+				return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", result))
 			}
-			if !errors.Is(err, redis.Nil) {
-				// Redis itself is having a bad day -- fall back to Postgres
-				// so results still get delivered instead of hanging forever.
-				status, dbErr := db.Queries.GetSubmissionStatusByID(ctx, submissionID)
-				if dbErr == nil && status != nil &&
-					*status != utils.Judge0InQueue.GetJudge0Status() &&
-					*status != utils.Judge0Processing.GetJudge0Status() {
-					if res, resErr := getSubmissionResult(ctx, submissionID); resErr == nil {
-						return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", res))
-					}
-				}
-			}
-			// redis.Nil just means "not finished yet" -- keep polling, no DB hit.
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch submission", nil))
 		}
 	}
+
+	return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to get submission", nil))
+
+
 }
 
 func getSubmissionResult(ctx context.Context, submissionID uuid.UUID) (dto.ResultResponse, error) {
