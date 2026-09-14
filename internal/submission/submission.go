@@ -78,7 +78,11 @@ func CreateBatchSubmissionPayload(sourceCode string, languageID int, testCases [
 		}
 	}
 
-	payload, err := json.Marshal(submissions)
+	type batchRequest struct {
+		Submissions []dto.Judge0Submission `json:"submissions"`
+	}
+
+	payload, err := json.Marshal(batchRequest{Submissions: submissions})
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal the payload: %w", err)
 	}
