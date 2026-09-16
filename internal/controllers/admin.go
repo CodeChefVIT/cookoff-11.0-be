@@ -1,7 +1,6 @@
 package controllers
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -18,29 +17,11 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-type adminQueries interface {
-	GetAllUsers(ctx context.Context) ([]sqlc.User, error)
-	GetUserByID(ctx context.Context, id uuid.UUID) (sqlc.User, error)
-	BanUser(ctx context.Context, id uuid.UUID) (sqlc.User, error)
-	UnbanUser(ctx context.Context, id uuid.UUID) (sqlc.User, error)
-	UpgradeUserRound(ctx context.Context, arg sqlc.UpgradeUserRoundParams) (sqlc.User, error)
-	IncrementUserRound(ctx context.Context, id uuid.UUID) (sqlc.User, error)
-	UpdateUserRole(ctx context.Context, arg sqlc.UpdateUserRoleParams) (sqlc.User, error)
-	GetUserSubmissions(ctx context.Context, userID uuid.UUID) ([]sqlc.GetUserSubmissionsRow, error)
-	GetLeaderboardData(ctx context.Context) ([]sqlc.GetLeaderboardDataRow, error)
-	GetActiveUsersCount(ctx context.Context) (int32, error)
-	GetTotalUsersCount(ctx context.Context) (int32, error)
-	GetBannedUsersCount(ctx context.Context) (int32, error)
-	GetSubmissionsAnalytics(ctx context.Context) (sqlc.GetSubmissionsAnalyticsRow, error)
-	GetLanguageDistribution(ctx context.Context) ([]sqlc.GetLanguageDistributionRow, error)
-	GetRecentSubmissionsCount(ctx context.Context, submissionTime pgtype.Timestamptz) (int32, error)
-}
-
 type AdminController struct {
-	queries adminQueries
+	queries *sqlc.Queries
 }
 
-func NewAdminController(queries adminQueries) *AdminController {
+func NewAdminController(queries *sqlc.Queries) *AdminController {
 	return &AdminController{queries: queries}
 }
 

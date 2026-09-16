@@ -2,6 +2,7 @@ package timer
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"sync"
 	"time"
@@ -22,7 +23,7 @@ const (
 	DefaultDuration int64 = 3600 // 1 hour in seconds
 )
 
-// In-memory fallback if Redis is not initialized (e.g., in unit tests)
+// In-memory fallback if Redis is not initialized
 var (
 	memMu        sync.RWMutex
 	memRound     int32 = DefaultRound
@@ -93,7 +94,7 @@ func UpdateTime(ctx context.Context, additionalSeconds int64, newDurationSeconds
 
 	isRunning := currentStatus.IsRunning
 	var startTimeStr, endTimeStr *string
-	var timeLeft int64 = duration
+	var timeLeft int64 = 0
 
 	if isRunning && currentStatus.EndTime != nil {
 		endT, parseErr := time.Parse(time.RFC3339, *currentStatus.EndTime)
@@ -246,7 +247,7 @@ func ResetRound(ctx context.Context) (dto.TimerResponse, error) {
 			Round:     currentRound,
 			IsRunning: false,
 			Duration:  duration,
-			TimeLeft:  duration,
+			TimeLeft:  0,
 		}, nil
 	}
 
@@ -263,7 +264,7 @@ func ResetRound(ctx context.Context) (dto.TimerResponse, error) {
 		Round:     currentRound,
 		IsRunning: false,
 		Duration:  duration,
-		TimeLeft:  duration,
+		TimeLeft:  0,
 	}, nil
 }
 
@@ -282,21 +283,45 @@ func GetTime(ctx context.Context) (dto.TimerResponse, error) {
 				Round:     round,
 				IsRunning: false,
 				Duration:  duration,
-				TimeLeft:  duration,
-			}, nil
-		}
-
-		endT, parseErr := time.Parse(time.RFC3339, endStr)
-		if parseErr != nil {
-			return dto.TimerResponse{
-				Round:     round,
-				IsRunning: false,
-				Duration:  duration,
-				TimeLeft:  duration,
+				TimeLeft:  0,
 			}, nil
 		}
 
 		now := time.Now().UTC()
+		var endT time.Time
+		var parseErr error
+
+		if endStr != "" {
+			endT, parseErr = time.Parse(time.RFC3339, endStr)
+		} else {
+			parseErr = errors.New("missing end time")
+		}
+
+		if parseErr != nil {
+			// If EndTime is missing or invalid, try calculating from StartTime + duration
+			if startStr != "" {
+				if startT, sErr := time.Parse(time.RFC3339, startStr); sErr == nil {
+					endT = startT.Add(time.Duration(duration) * time.Second)
+					parseErr = nil
+					endStr = endT.Format(time.RFC3339)
+				}
+			}
+		}
+
+		if parseErr != nil || endT.IsZero() {
+			memMu.Lock()
+			memIsRunning = false
+			memStartTime = ""
+			memEndTime = ""
+			memMu.Unlock()
+			return dto.TimerResponse{
+				Round:     round,
+				IsRunning: false,
+				Duration:  duration,
+				TimeLeft:  0,
+			}, nil
+		}
+
 		if now.After(endT) {
 			memMu.Lock()
 			memIsRunning = false
@@ -336,32 +361,50 @@ func GetTime(ctx context.Context) (dto.TimerResponse, error) {
 			Round:     round,
 			IsRunning: false,
 			Duration:  duration,
-			TimeLeft:  duration,
+			TimeLeft:  0,
 		}, nil
 	}
 
 	startStr, _ := utils.RedisClient.Get(ctx, KeyStartTime).Result()
 	endStr, err := utils.RedisClient.Get(ctx, KeyEndTime).Result()
-	if err != nil {
-		return dto.TimerResponse{
-			Round:     round,
-			IsRunning: false,
-			Duration:  duration,
-			TimeLeft:  duration,
-		}, nil
-	}
-
-	endT, err := time.Parse(time.RFC3339, endStr)
-	if err != nil {
-		return dto.TimerResponse{
-			Round:     round,
-			IsRunning: false,
-			Duration:  duration,
-			TimeLeft:  duration,
-		}, nil
-	}
 
 	now := time.Now().UTC()
+	var endT time.Time
+	var parseErr error
+
+	if err == nil && endStr != "" {
+		endT, parseErr = time.Parse(time.RFC3339, endStr)
+	} else {
+		parseErr = errors.New("missing end time")
+	}
+
+	if parseErr != nil {
+		// If EndTime is missing or invalid, try calculating from StartTime + duration
+		if startStr != "" {
+			if startT, sErr := time.Parse(time.RFC3339, startStr); sErr == nil {
+				endT = startT.Add(time.Duration(duration) * time.Second)
+				parseErr = nil
+				endStr = endT.Format(time.RFC3339)
+				_ = utils.RedisClient.Set(ctx, KeyEndTime, endStr, 0).Err()
+			}
+		}
+	}
+
+	if parseErr != nil || endT.IsZero() {
+		pipe := utils.RedisClient.Pipeline()
+		pipe.Set(ctx, KeyIsRunning, "false", 0)
+		pipe.Del(ctx, KeyStartTime)
+		pipe.Del(ctx, KeyEndTime)
+		_, _ = pipe.Exec(ctx)
+
+		return dto.TimerResponse{
+			Round:     round,
+			IsRunning: false,
+			Duration:  duration,
+			TimeLeft:  0,
+		}, nil
+	}
+
 	if now.After(endT) {
 		_ = utils.RedisClient.Set(ctx, KeyIsRunning, "false", 0).Err()
 		return dto.TimerResponse{

@@ -1,7 +1,6 @@
 package middlewares
 
 import (
-	"context"
 	"net/http"
 	"strings"
 
@@ -32,11 +31,7 @@ func VerifyJWTMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
-type userGetter interface {
-	GetUserByID(ctx context.Context, id uuid.UUID) (sqlc.User, error)
-}
-
-func BanCheckUser(queries userGetter) echo.MiddlewareFunc {
+func BanCheckUser(queries *sqlc.Queries) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			userID, ok := c.Get(UserIDKey).(string)
