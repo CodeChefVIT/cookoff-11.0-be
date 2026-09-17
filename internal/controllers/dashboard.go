@@ -50,12 +50,22 @@ func Dashboard(q dashboardQueries) echo.HandlerFunc {
 			AttemptTotals: map[string]int{"available": 0, "bought": 0, "answered": 0},
 			CurrentRound: int(timer.GetCurrentRound(ctx)),
 			RoundStatus: [3]dto.DashboardRoundStatus{
-				{Round:1, Status:"inactive"},
-				{Round:2, Status:"inactive"},
-				{Round:3, Status:"inactive"},
+				{Round:1},
+				{Round:2},
+				{Round:3},
 			},
 		}
-		d.RoundStatus[currentTime.Round-1].Status="active"
+		
+		for i:=0;i<3;i++{
+			if int(currentTime.Round-1)==i && i<=int(u.RoundQualified){
+				d.RoundStatus[i].Status="open"
+			}else if int(currentTime.Round-1)<i || int(u.RoundQualified)<i{
+				d.RoundStatus[i].Status="locked"
+			}else{
+				d.RoundStatus[i].Status="closed"
+			}
+			
+		}
 		d.Balance = numericText(u.Balance)
 		d.Score = numericText(u.Score)
 		for i, r := range rows {
