@@ -12,6 +12,7 @@ import (
 )
 
 type Querier interface {
+	BanUser(ctx context.Context, id uuid.UUID) (User, error)
 	CreateAttempt(ctx context.Context, arg CreateAttemptParams) (Attempt, error)
 	CreateGoogleUser(ctx context.Context, arg CreateGoogleUserParams) (User, error)
 	CreateQuestion(ctx context.Context, arg CreateQuestionParams) (Question, error)
@@ -22,26 +23,36 @@ type Querier interface {
 	DeleteQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	DeleteTestCase(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	EnsureAttempt(ctx context.Context, arg EnsureAttemptParams) error
+	GetActiveUsersCount(ctx context.Context) (int32, error)
 	GetAllTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]Testcase, error)
+	GetAllUsers(ctx context.Context) ([]User, error)
 	GetAttempt(ctx context.Context, arg GetAttemptParams) (Attempt, error)
 	GetAttemptForUpdate(ctx context.Context, arg GetAttemptForUpdateParams) (Attempt, error)
+	GetBannedUsersCount(ctx context.Context) (int32, error)
+	GetLanguageDistribution(ctx context.Context) ([]GetLanguageDistributionRow, error)
+	GetLeaderboardData(ctx context.Context) ([]GetLeaderboardDataRow, error)
 	GetBestScoreForQuestion(ctx context.Context, arg GetBestScoreForQuestionParams) (pgtype.Numeric, error)
 	GetPublicTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]Testcase, error)
 	GetQuestionBuyIn(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
 	GetQuestionByID(ctx context.Context, id uuid.UUID) (GetQuestionByIDRow, error)
 	GetQuestionForUser(ctx context.Context, arg GetQuestionForUserParams) (GetQuestionForUserRow, error)
 	GetQuestionReward(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
+	GetRecentSubmissionsCount(ctx context.Context, submissionTime pgtype.Timestamptz) (int32, error)
 	GetRoundOneVisualQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submission, error)
 	GetSubmissionForUpdate(ctx context.Context, id uuid.UUID) (Submission, error)
 	GetSubmissionResults(ctx context.Context, submissionID uuid.UUID) ([]SubmissionResult, error)
 	GetSubmissionStatusByID(ctx context.Context, id uuid.UUID) (*string, error)
+	GetSubmissionsAnalytics(ctx context.Context) (GetSubmissionsAnalyticsRow, error)
 	GetTestCaseByID(ctx context.Context, id uuid.UUID) (Testcase, error)
+	GetTotalUsersCount(ctx context.Context) (int32, error)
 	GetUserBalanceForUpdate(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByGoogleID(ctx context.Context, googleID *string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	GetUserScoreForUpdate(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
+	GetUserSubmissions(ctx context.Context, userID uuid.UUID) ([]GetUserSubmissionsRow, error)
+	IncrementUserRound(ctx context.Context, id uuid.UUID) (User, error)
 	LinkGoogleID(ctx context.Context, arg LinkGoogleIDParams) (User, error)
 	ListDashboardQuestions(ctx context.Context, id uuid.UUID) ([]ListDashboardQuestionsRow, error)
 	ListQuestionsByRound(ctx context.Context, round int32) ([]ListQuestionsByRoundRow, error)
@@ -49,13 +60,16 @@ type Querier interface {
 	ListVisualBlocksByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualBlock, error)
 	ListVisualSolutionsByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualSolution, error)
 	SetQuestionBountyActive(ctx context.Context, arg SetQuestionBountyActiveParams) (Question, error)
+	UnbanUser(ctx context.Context, id uuid.UUID) (User, error)
 	UpdateAttemptStatus(ctx context.Context, arg UpdateAttemptStatusParams) error
 	UpdateAttemptToBought(ctx context.Context, arg UpdateAttemptToBoughtParams) (Attempt, error)
 	UpdateQuestion(ctx context.Context, arg UpdateQuestionParams) (Question, error)
 	UpdateSubmissionStatus(ctx context.Context, arg UpdateSubmissionStatusParams) error
 	UpdateTestCase(ctx context.Context, arg UpdateTestCaseParams) (Testcase, error)
 	UpdateUserBalance(ctx context.Context, arg UpdateUserBalanceParams) error
+	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) (User, error)
 	UpdateUserScore(ctx context.Context, arg UpdateUserScoreParams) error
+	UpgradeUserRound(ctx context.Context, arg UpgradeUserRoundParams) (User, error)
 }
 
 var _ Querier = (*Queries)(nil)
