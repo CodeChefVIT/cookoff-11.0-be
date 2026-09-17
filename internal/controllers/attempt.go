@@ -51,6 +51,22 @@ func (c *AttemptController) CreateAttempt(ctx echo.Context) error {
 		))
 	}
 
+	question, err := c.queries.GetQuestionByID(ctx.Request().Context(), questionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ctx.JSON(http.StatusNotFound, dto.NewErrorResponse(
+				"Question not found", nil,
+			))
+		}
+		return ctx.JSON(http.StatusInternalServerError, dto.NewErrorResponse(
+			"Internal server error", nil,
+		))
+	}
+
+	if !ensureRoundRunning(ctx, question.Round) {
+		return nil
+	}
+
 	attemptResp, err := c.createAttempt(
 		ctx.Request().Context(),
 		userID,

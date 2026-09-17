@@ -69,6 +69,11 @@ func (c *VisualSubmissionController) SubmitVisualSolution(ctx echo.Context) erro
 		))
 	}
 
+	// Visual questions only exist in round 1 (GetRoundOneVisualQuestion).
+	if !ensureRoundRunning(ctx, 1) {
+		return nil
+	}
+
 	pointsAwarded, err := c.submitVisualSolution(
 		ctx.Request().Context(),
 		userID,
