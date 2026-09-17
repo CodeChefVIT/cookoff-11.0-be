@@ -8,7 +8,7 @@ import (
 
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/labstack/echo/v4"
 )
 

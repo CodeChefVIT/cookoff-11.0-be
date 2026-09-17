@@ -4,7 +4,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: cookoff_11_postgres
-    restart: always
+    restart: unless-stopped
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     environment:
@@ -22,7 +22,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: cookoff_11_redis
-    restart: always
+    restart: unless-stopped
     ports:
       - "${REDIS_HOST_PORT:-6379}:6379"
     command: redis-server ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}
@@ -34,12 +34,45 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    container_name: cookoff_11_migrate
+    restart: "no"
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:?POSTGRES_USER is required}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - POSTGRES_DB=${POSTGRES_DB:?POSTGRES_DB is required}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:?GOOGLE_REDIRECT_URI is required}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET is required}
+      - ACCESS_TOKEN_TTL=${ACCESS_TOKEN_TTL:-15m}
+      - REFRESH_TOKEN_TTL=${REFRESH_TOKEN_TTL:-48h}
+      - ELASTIC_HOST=${ELASTIC_HOST:-localhost}
+      - ELASTIC_PORT=${ELASTIC_PORT:-9200}
+      - ELASTIC_SCHEME=${ELASTIC_SCHEME:-http}
+      - ELASTIC_USERNAME=${ELASTIC_USERNAME:-elastic}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-changeme}
+      - ELASTIC_INDEX=${ELASTIC_INDEX:-logs}
+      - ELASTIC_MAX_RETRIES=${ELASTIC_MAX_RETRIES:-3}
+      - ELASTIC_INSECURE=${ELASTIC_INSECURE:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["up"]
+
   api:
     build:
       context: .
       dockerfile: Dockerfile
+      target: api
     container_name: cookoff_11_api
-    restart: always
+    restart: unless-stopped
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
     environment:
@@ -56,6 +89,14 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - FRONTEND_URL=${FRONTEND_URL:?FRONTEND_URL is required}
       - ADMIN_URL=${ADMIN_URL:?ADMIN_URL is required}
+      - BACKEND_URL=${BACKEND_URL:-http://localhost:8080}
+      - COOKIE_DOMAIN=${COOKIE_DOMAIN:-localhost}
+      - SECURE=${SECURE:-false}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:?GOOGLE_REDIRECT_URI is required}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET is required}
+      - ACCESS_TOKEN_TTL=${ACCESS_TOKEN_TTL:-15m}
+      - REFRESH_TOKEN_TTL=${REFRESH_TOKEN_TTL:-48h}
       - ELASTIC_HOST=${ELASTIC_HOST:-localhost}
       - ELASTIC_PORT=${ELASTIC_PORT:-9200}
       - ELASTIC_SCHEME=${ELASTIC_SCHEME:-http}
@@ -64,17 +105,62 @@ services:
       - ELASTIC_INDEX=${ELASTIC_INDEX:-logs}
       - ELASTIC_MAX_RETRIES=${ELASTIC_MAX_RETRIES:-3}
       - ELASTIC_INSECURE=${ELASTIC_INSECURE:-false}
+      - CALLBACK_URL=${CALLBACK_URL:-}
+      - JUDGE0_URI=${JUDGE0_URI:-}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    container_name: cookoff_11_worker
+    restart: unless-stopped
+    environment:
+      - ENV=production
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:?GOOGLE_REDIRECT_URI is required}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET is required}
+      - ACCESS_TOKEN_TTL=${ACCESS_TOKEN_TTL:-15m}
+      - REFRESH_TOKEN_TTL=${REFRESH_TOKEN_TTL:-48h}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - ELASTIC_HOST=${ELASTIC_HOST:-localhost}
+      - ELASTIC_PORT=${ELASTIC_PORT:-9200}
+      - ELASTIC_SCHEME=${ELASTIC_SCHEME:-http}
+      - ELASTIC_USERNAME=${ELASTIC_USERNAME:-elastic}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-changeme}
+      - ELASTIC_INDEX=${ELASTIC_INDEX:-logs}
+      - ELASTIC_MAX_RETRIES=${ELASTIC_MAX_RETRIES:-3}
+      - ELASTIC_INSECURE=${ELASTIC_INSECURE:-false}
+      - CALLBACK_URL=${CALLBACK_URL:-}
+      - JUDGE0_URI=${JUDGE0_URI:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:

@@ -11,10 +11,11 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/queue"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/router"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
 	"github.com/labstack/echo/v4"
 	emiddleware "github.com/labstack/echo/v4/middleware"
 )
@@ -28,6 +29,10 @@ func main() {
 		logging.Fatalf("Failed to load configuration: %v", err)
 	}
 
+	// Initialize Asynq queue client
+	queue.InitQueue()
+	defer queue.CloseQueue()
+
 	// Initialize DB pool
 	db.InitDB()
 	defer db.CloseDB()
@@ -38,6 +43,10 @@ func main() {
 
 	// Initialize Echo instance
 	e := echo.New()
+
+	// Initialize Token Cache (Redis)
+	utils.InitTokenCache()
+	defer utils.CloseTokenCache()
 
 	// Register request validator
 	e.Validator = utils.NewValidator()

@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	_ "github.com/jackc/pgx/v5/stdlib" // SQL driver wrapper for pgx/v5
 	"github.com/pressly/goose/v3"
 )
