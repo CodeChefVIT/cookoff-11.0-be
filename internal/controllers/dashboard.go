@@ -3,8 +3,8 @@ package controllers
 import (
 	"context"
 	"net/http"
-
-	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
+	"strconv"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/timer"
@@ -23,24 +23,26 @@ func Dashboard(q dashboardQueries) echo.HandlerFunc {
 		if e != nil {
 			return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("unauthorized", nil))
 		}
-		u, e := q.GetUserByID(c.Request().Context(), id)
+		ctx:=c.Request().Context()
+
+		u, e := q.GetUserByID(ctx, id)
 		if e != nil {
 			logging.Errorf("Dashboard error loading user %s: %v", id, e)
-			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("failed to load dashboard", nil))
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to load dashboard", nil))
 		}
 
-		ctx := c.Request().Context()
 		currentTime, err := timer.GetTime(ctx);
 		if err!=nil{
 			logging.Errorf("Dashboard error getting time %s: %v", id, e)
-			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("failed to load dashboard", nil))
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to load dashboard", nil))
 		}
 		
-		rows, e := q.ListDashboardQuestions(c.Request().Context(), id)
+		rows, e := q.ListDashboardQuestions(ctx, id)
 		if e != nil {
 			logging.Errorf("Dashboard error loading questions for user %s: %v", id, e)
-			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("failed to load dashboard", nil))
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to load dashboard", nil))
 		}
+
 		d := dto.DashboardResponse{
 			ID: u.ID,
 			Name: u.Name,
@@ -68,17 +70,21 @@ func Dashboard(q dashboardQueries) echo.HandlerFunc {
 		}
 		d.Balance = numericText(u.Balance)
 		d.Score = numericText(u.Score)
+		maxScore:=0
 		for i, r := range rows {
 			d.Questions[i] = dto.DashboardQuestion{ID: r.ID, Title: r.Title, Points: r.Points, Round: r.Round, AttemptStatus: r.AttemptStatus}
 			if r.AttemptStatus=="answered" {
 				d.RoundStatus[r.Round-1].QuestionsCompleted++
 				d.RoundStatus[r.Round-1].Score+=int(r.Points)
-			}else if r.AttemptStatus=="bought"{
+				maxScore+=int(r.Points)
+			}else if r.AttemptStatus=="bought"{//what abt round 1/3??
 				d.RoundStatus[r.Round-1].QuestionIncomplete++
+				maxScore+=int(r.Points)
 			}
 
 			d.AttemptTotals[r.AttemptStatus]++
 		}
+		d.MaxScore = strconv.Itoa(maxScore)
 		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Dashboard retrieved", d))
 	}
 }
