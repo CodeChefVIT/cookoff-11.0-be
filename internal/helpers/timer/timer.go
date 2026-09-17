@@ -428,6 +428,22 @@ func GetTime(ctx context.Context) (dto.TimerResponse, error) {
 	}, nil
 }
 
+// ErrRoundNotRunning means the contest timer is stopped or running a different round.
+var ErrRoundNotRunning = errors.New("round is not running")
+
+// EnsureRoundRunning returns ErrRoundNotRunning unless the contest timer is currently running round.
+// GetTime already flips an expired round to not running, so time-outs are covered too.
+func EnsureRoundRunning(ctx context.Context, round int32) error {
+	status, err := GetTime(ctx)
+	if err != nil {
+		return err
+	}
+	if !status.IsRunning || status.Round != round {
+		return ErrRoundNotRunning
+	}
+	return nil
+}
+
 func GetCurrentRound(ctx context.Context) int32 {
 	if utils.RedisClient == nil {
 		memMu.RLock()

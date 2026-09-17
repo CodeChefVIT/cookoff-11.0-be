@@ -72,6 +72,10 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("User not qualified for this round", nil))
 	}
 
+	if !ensureRoundRunning(c, question.Round) {
+		return nil
+	}
+
 	// The buy-in/reward economy applies to every round's code questions, not
 	// just the visual one — mirrors the same check submit_round1.go already
 	// performs for visual submissions. Without this, a user can skip
