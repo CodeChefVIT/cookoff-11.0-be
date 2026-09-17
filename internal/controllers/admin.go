@@ -142,8 +142,8 @@ func (ac *AdminController) UpgradeUser(c echo.Context) error {
 	}
 
 	var req dto.UpgradeUserRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse("Invalid request payload", err.Error()))
+	if bindErr := c.Bind(&req); bindErr != nil {
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse("Invalid request payload", bindErr.Error()))
 	}
 
 	updatedUser := existingUser
@@ -207,11 +207,11 @@ func (ac *AdminController) GetUserSubmissions(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse("Invalid user ID", nil))
 	}
 
-	if _, err := ac.queries.GetUserByID(ctx, id); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+	if _, userErr := ac.queries.GetUserByID(ctx, id); userErr != nil {
+		if errors.Is(userErr, pgx.ErrNoRows) {
 			return c.JSON(http.StatusNotFound, dto.NewErrorResponse("User not found", nil))
 		}
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch user", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch user", userErr.Error()))
 	}
 
 	submissions, err := ac.queries.GetUserSubmissions(ctx, id)
@@ -438,7 +438,7 @@ func (ac *AdminController) UpdateTime(c echo.Context) error {
 func (ac *AdminController) StartRound(c echo.Context) error {
 	var roundPtr *int32
 	if rStr := c.QueryParam("round"); rStr != "" {
-		if r, err := strconv.Atoi(rStr); err == nil && r > 0 {
+		if r, err := strconv.ParseInt(rStr, 10, 32); err == nil && r > 0 {
 			r32 := int32(r)
 			roundPtr = &r32
 		}

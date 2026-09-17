@@ -329,9 +329,9 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	if partialScore > bestScore {
 		scoreDiff := partialScore - bestScore
 
-		newScoreNumeric, err := utils.Float64ToNumeric(score + scoreDiff)
-		if err != nil {
-			return dto.ResultResponse{}, fmt.Errorf("convert new score: %w", err)
+		newScoreNumeric, scoreErr := utils.Float64ToNumeric(score + scoreDiff)
+		if scoreErr != nil {
+			return dto.ResultResponse{}, fmt.Errorf("convert new score: %w", scoreErr)
 		}
 
 		if err := qtx.UpdateUserScore(ctx, sqlc.UpdateUserScoreParams{

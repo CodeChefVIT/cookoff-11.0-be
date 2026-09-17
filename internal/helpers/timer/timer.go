@@ -438,7 +438,7 @@ func GetCurrentRound(ctx context.Context) int32 {
 	if err != nil {
 		return DefaultRound
 	}
-	parsed, err := strconv.Atoi(val)
+	parsed, err := strconv.ParseInt(val, 10, 32)
 	if err != nil || parsed <= 0 {
 		return DefaultRound
 	}
