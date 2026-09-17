@@ -16,6 +16,7 @@ import (
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/submission"
 )
@@ -136,9 +137,15 @@ func RunCustom(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
 	}
 
+	runtimeNum, err := utils.Float64ToNumeric(1.0)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to initialize execution timeout", nil))
+	}
+
 	// dummy testcase
 	testcase := sqlc.Testcase{
-		Input: req.Stdin,
+		Input:   req.Stdin,
+		Runtime: runtimeNum,
 	}
 
 	payload, err := submission.CreateSubmissionPayload(req.SourceCode, req.LanguageID, testcase)

@@ -100,16 +100,20 @@ func (c *AttemptController) createAttempt(
 
 	qtx := c.queries.WithTx(tx)
 
-	_, err = qtx.GetAttemptForUpdate(ctx, sqlc.GetAttemptForUpdateParams{
+	existingAttempt, err := qtx.GetAttemptForUpdate(ctx, sqlc.GetAttemptForUpdateParams{
 		UserID:     userID,
 		QuestionID: questionID,
 	})
-	if err == nil {
-		return nil, ErrAttemptAlreadyExists
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
 	}
 
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return nil, err
+	hasAvailableAttempt := false
+	if err == nil {
+		if existingAttempt.Status != "available" {
+			return nil, ErrAttemptAlreadyExists
+		}
+		hasAvailableAttempt = true
 	}
 
 	balanceNumeric, err := qtx.GetUserBalanceForUpdate(ctx, userID)
@@ -151,15 +155,26 @@ func (c *AttemptController) createAttempt(
 		return nil, err
 	}
 
-	attempt, err := qtx.CreateAttempt(ctx, sqlc.CreateAttemptParams{
-		ID:          uuid.New(),
-		UserID:      userID,
-		QuestionID:  questionID,
-		Status:      "bought",
-		IsBuyInPaid: true,
-	})
-	if err != nil {
-		return nil, err
+	var attempt sqlc.Attempt
+	if hasAvailableAttempt {
+		attempt, err = qtx.UpdateAttemptToBought(ctx, sqlc.UpdateAttemptToBoughtParams{
+			UserID:     userID,
+			QuestionID: questionID,
+		})
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		attempt, err = qtx.CreateAttempt(ctx, sqlc.CreateAttemptParams{
+			ID:          uuid.New(),
+			UserID:      userID,
+			QuestionID:  questionID,
+			Status:      "bought",
+			IsBuyInPaid: true,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {

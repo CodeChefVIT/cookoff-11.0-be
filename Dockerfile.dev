@@ -1,10 +1,19 @@
+# Development image: hot-reload the API with air.
+# Source is bind-mounted by docker-compose.dev.yml, so COPY here only seeds
+# the initial build cache/layer; edits on the host trigger air rebuilds.
+#
+# air is pinned below v1.67.4: that release (and later) requires Go >= 1.26,
+# newer than the golang:1.25-alpine base image, and fails `go install`.
 FROM golang:1.25-alpine
 
-RUN apk add --no-cache git gcc musl-dev
+RUN apk add --no-cache git build-base curl \
+    && go install github.com/air-verse/air@v1.63.0 \
+    # air builds via `go build`, which stamps VCS info from .git by default;
+    # the bind-mounted repo is host-owned, so git refuses it as root unless
+    # explicitly trusted here.
+    && git config --global --add safe.directory /app
 
 WORKDIR /app
-
-ENV PATH="/go/bin:${PATH}"
 
 COPY go.mod go.sum ./
 RUN go mod download

@@ -17,11 +17,23 @@ const (
 
 func VerifyJWTMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		cookie, err := c.Cookie(auth.AccessCookie)
-		if err != nil {
+		var tokenStr string
+		if authHeader := c.Request().Header.Get("Authorization"); authHeader != "" {
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+				tokenStr = parts[1]
+			}
+		}
+		if tokenStr == "" {
+			cookie, err := c.Cookie(auth.AccessCookie)
+			if err == nil {
+				tokenStr = cookie.Value
+			}
+		}
+		if tokenStr == "" {
 			return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
 		}
-		claims, err := auth.ParseToken(cookie.Value, auth.AccessType)
+		claims, err := auth.ParseToken(tokenStr, auth.AccessType)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
 		}

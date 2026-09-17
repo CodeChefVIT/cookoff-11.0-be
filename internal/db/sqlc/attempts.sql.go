@@ -76,6 +76,33 @@ func (q *Queries) EnsureAttempt(ctx context.Context, arg EnsureAttemptParams) er
 	return err
 }
 
+const getAttempt = `-- name: GetAttempt :one
+SELECT id, user_id, question_id, status, is_buy_in_paid, attempted_at, answered_at
+FROM attempts
+WHERE user_id = $1
+  AND question_id = $2
+`
+
+type GetAttemptParams struct {
+	UserID     uuid.UUID
+	QuestionID uuid.UUID
+}
+
+func (q *Queries) GetAttempt(ctx context.Context, arg GetAttemptParams) (Attempt, error) {
+	row := q.db.QueryRow(ctx, getAttempt, arg.UserID, arg.QuestionID)
+	var i Attempt
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.QuestionID,
+		&i.Status,
+		&i.IsBuyInPaid,
+		&i.AttemptedAt,
+		&i.AnsweredAt,
+	)
+	return i, err
+}
+
 const getAttemptForUpdate = `-- name: GetAttemptForUpdate :one
 SELECT id, user_id, question_id, status, is_buy_in_paid, attempted_at, answered_at
 FROM attempts
@@ -129,6 +156,36 @@ func (q *Queries) GetUserBalanceForUpdate(ctx context.Context, id uuid.UUID) (pg
 	var balance pgtype.Numeric
 	err := row.Scan(&balance)
 	return balance, err
+}
+
+const updateAttemptToBought = `-- name: UpdateAttemptToBought :one
+UPDATE attempts
+SET
+    status = 'bought',
+    is_buy_in_paid = true
+WHERE user_id = $1
+  AND question_id = $2
+RETURNING id, user_id, question_id, status, is_buy_in_paid, attempted_at, answered_at
+`
+
+type UpdateAttemptToBoughtParams struct {
+	UserID     uuid.UUID
+	QuestionID uuid.UUID
+}
+
+func (q *Queries) UpdateAttemptToBought(ctx context.Context, arg UpdateAttemptToBoughtParams) (Attempt, error) {
+	row := q.db.QueryRow(ctx, updateAttemptToBought, arg.UserID, arg.QuestionID)
+	var i Attempt
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.QuestionID,
+		&i.Status,
+		&i.IsBuyInPaid,
+		&i.AttemptedAt,
+		&i.AnsweredAt,
+	)
+	return i, err
 }
 
 const updateUserBalance = `-- name: UpdateUserBalance :exec

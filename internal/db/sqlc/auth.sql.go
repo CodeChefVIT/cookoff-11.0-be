@@ -50,6 +50,28 @@ func (q *Queries) CreateGoogleUser(ctx context.Context, arg CreateGoogleUserPara
 	return i, err
 }
 
+const getUserByEmail = `-- name: GetUserByEmail :one
+SELECT id, email, reg_no, role, round_qualified, google_id, balance, score, name, is_banned FROM users WHERE email = $1
+`
+
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByEmail, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.RegNo,
+		&i.Role,
+		&i.RoundQualified,
+		&i.GoogleID,
+		&i.Balance,
+		&i.Score,
+		&i.Name,
+		&i.IsBanned,
+	)
+	return i, err
+}
+
 const getUserByGoogleID = `-- name: GetUserByGoogleID :one
 SELECT id, email, reg_no, role, round_qualified, google_id, balance, score, name, is_banned FROM users WHERE google_id = $1
 `
@@ -78,6 +100,34 @@ SELECT id, email, reg_no, role, round_qualified, google_id, balance, score, name
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByID, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.RegNo,
+		&i.Role,
+		&i.RoundQualified,
+		&i.GoogleID,
+		&i.Balance,
+		&i.Score,
+		&i.Name,
+		&i.IsBanned,
+	)
+	return i, err
+}
+
+const linkGoogleID = `-- name: LinkGoogleID :one
+UPDATE users SET google_id = $2 WHERE id = $1 AND google_id IS NULL
+RETURNING id, email, reg_no, role, round_qualified, google_id, balance, score, name, is_banned
+`
+
+type LinkGoogleIDParams struct {
+	ID       uuid.UUID
+	GoogleID *string
+}
+
+func (q *Queries) LinkGoogleID(ctx context.Context, arg LinkGoogleIDParams) (User, error) {
+	row := q.db.QueryRow(ctx, linkGoogleID, arg.ID, arg.GoogleID)
 	var i User
 	err := row.Scan(
 		&i.ID,
