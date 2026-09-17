@@ -142,9 +142,12 @@ func (ac *AdminController) UpgradeUser(c echo.Context) error {
 	}
 
 	var req dto.UpgradeUserRequest
-	_ = c.Bind(&req)
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse("Invalid request payload", err.Error()))
+	}
 
 	updatedUser := existingUser
+	hasUpdate := false
 
 	if req.Role != nil && *req.Role != "" {
 		updatedUser, err = ac.queries.UpdateUserRole(ctx, sqlc.UpdateUserRoleParams{
@@ -154,25 +157,26 @@ func (ac *AdminController) UpgradeUser(c echo.Context) error {
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to update user role", err.Error()))
 		}
+		hasUpdate = true
 	}
 
-	if req.RoundQualified != nil && *req.RoundQualified > 0 {
+	targetRound := req.RoundQualified
+	if targetRound == nil {
+		targetRound = req.Round
+	}
+
+	if targetRound != nil && *targetRound > 0 {
 		updatedUser, err = ac.queries.UpgradeUserRound(ctx, sqlc.UpgradeUserRoundParams{
 			ID:             id,
-			RoundQualified: *req.RoundQualified,
+			RoundQualified: *targetRound,
 		})
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to upgrade user round", err.Error()))
 		}
-	} else if req.Round != nil && *req.Round > 0 {
-		updatedUser, err = ac.queries.UpgradeUserRound(ctx, sqlc.UpgradeUserRoundParams{
-			ID:             id,
-			RoundQualified: *req.Round,
-		})
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to upgrade user round", err.Error()))
-		}
-	} else if req.Role == nil || *req.Role == "" {
+		hasUpdate = true
+	}
+
+	if !hasUpdate {
 		updatedUser, err = ac.queries.IncrementUserRound(ctx, id)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to increment user round", err.Error()))
@@ -323,7 +327,7 @@ func (ac *AdminController) GetAnalytics(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch submission analytics", err.Error()))
 	}
 
-	tenMinutesAgo := time.Now().Add(-10 * time.Minute)
+	tenMinutesAgo := time.Now().UTC().Add(-10 * time.Minute)
 	recentSubmissions, err := ac.queries.GetRecentSubmissionsCount(ctx, pgtype.Timestamptz{
 		Time:  tenMinutesAgo,
 		Valid: true,
@@ -386,11 +390,7 @@ func (ac *AdminController) SetTime(c echo.Context) error {
 	} else if req.DurationMinutes != nil && *req.DurationMinutes > 0 {
 		durationSeconds = *req.DurationMinutes * 60
 	} else if req.Duration != nil && *req.Duration > 0 {
-		if *req.Duration > 300 {
-			durationSeconds = *req.Duration
-		} else {
-			durationSeconds = *req.Duration * 60
-		}
+		durationSeconds = *req.Duration
 	}
 
 	var round int32 = 1
@@ -418,21 +418,12 @@ func (ac *AdminController) UpdateTime(c echo.Context) error {
 	} else if req.AdditionalMinutes != nil {
 		additionalSeconds = *req.AdditionalMinutes * 60
 	} else if req.AdditionalTime != nil {
-		if *req.AdditionalTime > 300 {
-			additionalSeconds = *req.AdditionalTime
-		} else {
-			additionalSeconds = *req.AdditionalTime * 60
-		}
+		additionalSeconds = *req.AdditionalTime
 	}
 
 	var newDurationSeconds *int64
 	if req.Duration != nil && *req.Duration > 0 {
-		var sec int64
-		if *req.Duration > 300 {
-			sec = *req.Duration
-		} else {
-			sec = *req.Duration * 60
-		}
+		sec := *req.Duration
 		newDurationSeconds = &sec
 	}
 

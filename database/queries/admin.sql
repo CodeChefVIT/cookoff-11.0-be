@@ -51,11 +51,11 @@ SELECT
     u.round_qualified,
     u.is_banned,
     COALESCE(SUM(s.runtime), 0)::DECIMAL AS total_runtime,
-    MAX(s.submission_time) AS last_submission_time,
+    MAX(s.submission_time)::TIMESTAMPTZ AS last_submission_time,
     COUNT(s.id)::INT AS total_submissions,
-    COUNT(CASE WHEN s.status = 'Success' OR s.status = 'success' THEN 1 END)::INT AS solved_count
+    COUNT(DISTINCT CASE WHEN LOWER(s.status) = 'success' THEN s.question_id END)::INT AS solved_count
 FROM users u
-LEFT JOIN submissions s ON s.user_id = u.id AND (s.status = 'Success' OR s.status = 'success')
+LEFT JOIN submissions s ON s.user_id = u.id AND LOWER(s.status) = 'success'
 GROUP BY u.id, u.name, u.email, u.reg_no, u.score, u.round_qualified, u.is_banned
 ORDER BY u.score DESC, total_runtime ASC, last_submission_time ASC NULLS LAST, u.name ASC;
 
@@ -75,8 +75,8 @@ WHERE is_banned = true;
 -- name: GetSubmissionsAnalytics :one
 SELECT 
     COUNT(*)::INT AS total_submissions,
-    COUNT(CASE WHEN status = 'Success' OR status = 'success' THEN 1 END)::INT AS successful_submissions,
-    COUNT(CASE WHEN status != 'Success' AND status != 'success' THEN 1 END)::INT AS failed_submissions,
+    COUNT(CASE WHEN LOWER(status) = 'success' THEN 1 END)::INT AS successful_submissions,
+    COUNT(CASE WHEN LOWER(status) != 'success' OR status IS NULL THEN 1 END)::INT AS failed_submissions,
     COALESCE(SUM(testcases_passed), 0)::BIGINT AS total_testcases_passed,
     COALESCE(SUM(testcases_failed), 0)::BIGINT AS total_testcases_failed
 FROM submissions;
