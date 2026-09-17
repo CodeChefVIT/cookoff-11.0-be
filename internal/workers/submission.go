@@ -334,11 +334,11 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 			return dto.ResultResponse{}, fmt.Errorf("convert new score: %w", scoreErr)
 		}
 
-		if err := qtx.UpdateUserScore(ctx, sqlc.UpdateUserScoreParams{
+		if updateErr := qtx.UpdateUserScore(ctx, sqlc.UpdateUserScoreParams{
 			ID:    submission.UserID,
 			Score: newScoreNumeric,
-		}); err != nil {
-			return dto.ResultResponse{}, fmt.Errorf("update user score: %w", err)
+		}); updateErr != nil {
+			return dto.ResultResponse{}, fmt.Errorf("update user score: %w", updateErr)
 		}
 	}
 
@@ -404,20 +404,20 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	if err != nil {
 		return dto.ResultResponse{}, fmt.Errorf("convert new balance: %w", err)
 	}
-	if err := qtx.UpdateUserBalance(ctx, sqlc.UpdateUserBalanceParams{
+	if updateBalErr := qtx.UpdateUserBalance(ctx, sqlc.UpdateUserBalanceParams{
 		ID:      submission.UserID,
 		Balance: newBalanceNumeric,
-	}); err != nil {
-		return dto.ResultResponse{}, fmt.Errorf("update user balance: %w", err)
+	}); updateBalErr != nil {
+		return dto.ResultResponse{}, fmt.Errorf("update user balance: %w", updateBalErr)
 	}
 
-	if err := qtx.UpdateAttemptStatus(ctx, sqlc.UpdateAttemptStatusParams{
+	if updateAttErr := qtx.UpdateAttemptStatus(ctx, sqlc.UpdateAttemptStatusParams{
 		UserID:     submission.UserID,
 		QuestionID: submission.QuestionID,
 		Status:     "answered",
 		AnsweredAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
-	}); err != nil {
-		return dto.ResultResponse{}, fmt.Errorf("update attempt status: %w", err)
+	}); updateAttErr != nil {
+		return dto.ResultResponse{}, fmt.Errorf("update attempt status: %w", updateAttErr)
 	}
 
 	logging.Infof("submission %s finalized: user=%s question=%s reward=%.2f partial_score=%.2f",
