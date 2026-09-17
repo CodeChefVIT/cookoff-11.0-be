@@ -10,6 +10,7 @@ import (
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 )
@@ -172,6 +173,11 @@ func (c *AttemptController) createAttempt(
 			Status:      "bought",
 			IsBuyInPaid: true,
 		})
+		if isDuplicateAttempt(err) {
+			// A concurrent request inserted the row after our lookup; the
+			// deferred rollback undoes this request's balance deduction.
+			return nil, ErrAttemptAlreadyExists
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -189,4 +195,10 @@ func (c *AttemptController) createAttempt(
 		NewBalance:  balance,
 		IsBuyInPaid: attempt.IsBuyInPaid,
 	}, nil
+}
+
+// isDuplicateAttempt reports whether err is a violation of the one-attempt-per-user-question constraint.
+func isDuplicateAttempt(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "uq_attempts_user_question"
 }
