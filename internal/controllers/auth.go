@@ -14,6 +14,7 @@ import (
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/auth"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
@@ -56,6 +57,7 @@ func (ac *AuthController) GoogleCallback(c echo.Context) error {
 	}
 	identity, err := ac.googleIdentity(c.Request().Context(), c.QueryParam("code"))
 	if err != nil {
+		logging.Errorf("Google authentication failed: %v", err)
 		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Google authentication failed", nil))
 	}
 	user, err := ac.findUser(c.Request().Context(), identity)
@@ -126,6 +128,23 @@ func (ac *AuthController) unauthorized(c echo.Context) error {
 
 type googleIdentity struct{ Subject, Email, Name string }
 
+// googleBool accepts both JSON booleans and Google tokeninfo's string-encoded "true"/"false".
+type googleBool bool
+
+func (b *googleBool) UnmarshalJSON(data []byte) error {
+	var value bool
+	if err := json.Unmarshal(data, &value); err == nil {
+		*b = googleBool(value)
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+	*b = googleBool(strings.EqualFold(text, "true"))
+	return nil
+}
+
 func (ac *AuthController) googleIdentity(ctx context.Context, code string) (googleIdentity, error) {
 	values := url.Values{"code": {code}, "client_id": {utils.Config.GoogleClientID}, "client_secret": {utils.Config.GoogleClientSecret}, "redirect_uri": {utils.Config.GoogleRedirectURI}, "grant_type": {"authorization_code"}}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, utils.Config.GoogleTokenURL, strings.NewReader(values.Encode()))
@@ -161,17 +180,17 @@ func (ac *AuthController) googleIdentity(ctx context.Context, code string) (goog
 		return googleIdentity{}, fmt.Errorf("invalid ID token")
 	}
 	var info struct {
-		Subject       string `json:"sub"`
-		Email         string `json:"email"`
-		EmailVerified bool   `json:"email_verified"`
-		Name          string `json:"name"`
-		Audience      string `json:"aud"`
-		Issuer        string `json:"iss"`
+		Subject       string     `json:"sub"`
+		Email         string     `json:"email"`
+		EmailVerified googleBool `json:"email_verified"`
+		Name          string     `json:"name"`
+		Audience      string     `json:"aud"`
+		Issuer        string     `json:"iss"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&info); err != nil {
 		return googleIdentity{}, err
 	}
-	if info.Subject == "" || info.Email == "" || !info.EmailVerified || info.Audience != utils.Config.GoogleClientID || (info.Issuer != "accounts.google.com" && info.Issuer != "https://accounts.google.com") {
+	if info.Subject == "" || info.Email == "" || !bool(info.EmailVerified) || info.Audience != utils.Config.GoogleClientID || (info.Issuer != "accounts.google.com" && info.Issuer != "https://accounts.google.com") {
 		return googleIdentity{}, fmt.Errorf("unverified Google identity")
 	}
 	return googleIdentity{Subject: info.Subject, Email: info.Email, Name: info.Name}, nil
