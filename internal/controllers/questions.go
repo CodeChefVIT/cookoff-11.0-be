@@ -93,7 +93,8 @@ func (qc *QuestionController) GetByID(c echo.Context) error {
 	// Admins bypass the round_qualified filter so they can edit any question.
 	role, _ := c.Get(middlewares.RoleKey).(string)
 	if strings.EqualFold(role, "admin") {
-		q, e := qc.queries.GetQuestionByID(c.Request().Context(), qid)
+		var q sqlc.GetQuestionByIDRow
+		q, e = qc.queries.GetQuestionByID(c.Request().Context(), qid)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return questionError(c, http.StatusNotFound, "Question not found")
 		}
