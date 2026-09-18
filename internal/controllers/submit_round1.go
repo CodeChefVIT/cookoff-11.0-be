@@ -74,7 +74,7 @@ func (c *VisualSubmissionController) SubmitVisualSolution(ctx echo.Context) erro
 		return nil
 	}
 
-	pointsAwarded, err := c.submitVisualSolution(
+	outcome, err := c.submitVisualSolution(
 		ctx.Request().Context(),
 		userID,
 		req,
@@ -93,21 +93,37 @@ func (c *VisualSubmissionController) SubmitVisualSolution(ctx echo.Context) erro
 		))
 	}
 
+	status := "wrong answer"
+	if outcome.Correct {
+		status = "success"
+	}
+
 	return ctx.JSON(http.StatusOK, dto.NewSuccessResponse(
 		"Visual solution submitted successfully", dto.SubmitVisualSolutionResponse{
-			PointsAwarded: pointsAwarded,
+			Status:          status,
+			PointsAwarded:   outcome.PointsAwarded,
+			Correct:         outcome.Correct,
+			AlreadyAnswered: outcome.AlreadyAnswered,
 		},
 	))
+}
+
+// visualOutcome separates "the chain was right" from "the chain was paid for".
+// A resubmission on a settled attempt is still correct but awards nothing.
+type visualOutcome struct {
+	PointsAwarded   float64
+	Correct         bool
+	AlreadyAnswered bool
 }
 
 func (c *VisualSubmissionController) submitVisualSolution(
 	ctx context.Context,
 	userID uuid.UUID,
 	req dto.SubmitVisualSolutionRequest,
-) (float64, error) {
+) (visualOutcome, error) {
 	tx, err := c.db.Begin(ctx)
 	if err != nil {
-		return 0, err
+		return visualOutcome{}, err
 	}
 
 	defer func() { _ = tx.Rollback(ctx) }()
@@ -118,9 +134,9 @@ func (c *VisualSubmissionController) submitVisualSolution(
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return 0, echo.NewHTTPError(http.StatusNotFound, "Question doesn't exist")
+			return visualOutcome{}, echo.NewHTTPError(http.StatusNotFound, "Question doesn't exist")
 		}
-		return 0, err
+		return visualOutcome{}, err
 	}
 
 	attempt, err := qtx.GetAttemptForUpdate(
@@ -133,7 +149,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
-			return 0, err
+			return visualOutcome{}, err
 		}
 		// Since Round 1 has no buy-in economy, auto-create an attempt for the user
 		attempt, err = qtx.CreateAttempt(ctx, sqlc.CreateAttemptParams{
@@ -144,7 +160,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 			IsBuyInPaid: true,
 		})
 		if err != nil {
-			return 0, err
+			return visualOutcome{}, err
 		}
 	} else if attempt.Status == "available" {
 		attempt, err = qtx.UpdateAttemptToBought(ctx, sqlc.UpdateAttemptToBoughtParams{
@@ -152,7 +168,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 			QuestionID: req.QuestionID,
 		})
 		if err != nil {
-			return 0, err
+			return visualOutcome{}, err
 		}
 	}
 
@@ -162,7 +178,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 	)
 
 	if err != nil {
-		return 0, err
+		return visualOutcome{}, err
 	}
 
 	validBlocksIDs := make(map[uuid.UUID]struct{})
@@ -173,7 +189,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 
 	for _, blockID := range req.Blocks {
 		if _, exists := validBlocksIDs[blockID]; !exists {
-			return 0, echo.NewHTTPError(http.StatusBadRequest, "Invalid block ID")
+			return visualOutcome{}, echo.NewHTTPError(http.StatusBadRequest, "Invalid block ID")
 		}
 	}
 
@@ -183,7 +199,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 	)
 
 	if err != nil {
-		return 0, err
+		return visualOutcome{}, err
 	}
 
 	var (
@@ -197,7 +213,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 			isCorrect = true
 			solutionPoints, err = utils.NumericToFloat64(solution.Points)
 			if err != nil {
-				return 0, err
+				return visualOutcome{}, err
 			}
 			break
 		}
@@ -206,7 +222,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 	sourceCode, err := json.Marshal(req.Blocks)
 
 	if err != nil {
-		return 0, err
+		return visualOutcome{}, err
 	}
 
 	//updating the submission status
@@ -228,7 +244,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 	)
 
 	if err != nil {
-		return 0, err
+		return visualOutcome{}, err
 	}
 
 	if isCorrect && attempt.Status == "bought" {
@@ -236,18 +252,18 @@ func (c *VisualSubmissionController) submitVisualSolution(
 		//updating the user score
 		currentScoreNumeric, err := qtx.GetUserScoreForUpdate(ctx, userID)
 		if err != nil {
-			return 0, err
+			return visualOutcome{}, err
 		}
 		currentScore, err := utils.NumericToFloat64(currentScoreNumeric)
 		if err != nil {
-			return 0, err
+			return visualOutcome{}, err
 		}
 
 		newScore := currentScore + solutionPoints
 
 		newScoreNumeric, err := utils.Float64ToNumeric(newScore)
 		if err != nil {
-			return 0, err
+			return visualOutcome{}, err
 		}
 
 		err = qtx.UpdateUserScore(ctx, sqlc.UpdateUserScoreParams{
@@ -255,7 +271,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 			Score: newScoreNumeric,
 		})
 		if err != nil {
-			return 0, err
+			return visualOutcome{}, err
 		}
 
 		pointsAwarded = solutionPoints
@@ -263,27 +279,27 @@ func (c *VisualSubmissionController) submitVisualSolution(
 		//updating the user balance
 		currentUserBalanceNumeric, err := qtx.GetUserBalanceForUpdate(ctx, userID)
 		if err != nil {
-			return 0, err
+			return visualOutcome{}, err
 		}
 		questionRewardNumeric, err := qtx.GetQuestionReward(ctx, req.QuestionID)
 		if err != nil {
-			return 0, err
+			return visualOutcome{}, err
 		}
 
 		questionReward, err := utils.NumericToFloat64(questionRewardNumeric)
 		if err != nil {
-			return 0, err
+			return visualOutcome{}, err
 		}
 		currentBalance, err := utils.NumericToFloat64(currentUserBalanceNumeric)
 		if err != nil {
-			return 0, err
+			return visualOutcome{}, err
 		}
 
 		newBalance := currentBalance + questionReward
 
 		newBalanceNumeric, err := utils.Float64ToNumeric(newBalance)
 		if err != nil {
-			return 0, err
+			return visualOutcome{}, err
 		}
 
 		err = qtx.UpdateUserBalance(ctx, sqlc.UpdateUserBalanceParams{
@@ -291,7 +307,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 			Balance: newBalanceNumeric,
 		})
 		if err != nil {
-			return 0, err
+			return visualOutcome{}, err
 		}
 
 		err = qtx.UpdateAttemptStatus(
@@ -307,15 +323,22 @@ func (c *VisualSubmissionController) submitVisualSolution(
 			},
 		)
 		if err != nil {
-			return 0, err
+			return visualOutcome{}, err
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return 0, err
+		return visualOutcome{}, err
 	}
 
-	return pointsAwarded, nil
+	return visualOutcome{
+		PointsAwarded: pointsAwarded,
+		Correct:       isCorrect,
+		// The payout branch above runs only while the attempt is still
+		// "bought", so anything else means it was settled by an earlier
+		// submission.
+		AlreadyAnswered: attempt.Status != "bought",
+	}, nil
 }
 
 func uuidSlicesEqual(a, b []uuid.UUID) bool {

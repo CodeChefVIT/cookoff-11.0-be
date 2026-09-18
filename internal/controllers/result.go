@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -46,25 +47,67 @@ func GetResult(c echo.Context) error {
 		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Submission not owned by user", nil))
 	}
 
-	var result dto.ResultResponse
-	err = utils.GetCache(ctx, utils.SubmissionResultKey(submissionID.String()), &result)
-	if err == nil {
-		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", result))
-	}
+	// Long-poll until the verdict is terminal. The portal issues exactly one
+	// GET per submission with a 130s client timeout and has no polling loop, so
+	// returning a non-terminal placeholder leaves it with nothing to render —
+	// and because the placeholder was a bare status *string* where the success
+	// payload is an object, it could not even be parsed. Holding the request is
+	// also the only option that survives the per-IP rate limiter
+	// (cmd/api/main.go) when a whole hall shares one NAT address; a
+	// client-side poll would multiply request volume by the number of players.
+	deadline := time.After(resultLongPollTimeout)
+	ticker := time.NewTicker(resultPollInterval)
+	defer ticker.Stop()
 
-	// Cache miss or error: check DB status
-	if submission.Status != nil &&
-		(*submission.Status == utils.Judge0InQueue.GetJudge0Status() ||
-			*submission.Status == utils.Judge0Processing.GetJudge0Status()) {
-		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission is being processed", submission.Status))
-	}
+	for {
+		var result dto.ResultResponse
+		if cacheErr := utils.GetCache(ctx, utils.SubmissionResultKey(submissionID.String()), &result); cacheErr == nil {
+			return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", result))
+		}
 
-	res, resErr := getSubmissionResult(ctx, submission)
-	if resErr != nil {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch submission result", nil))
-	}
+		if !isPendingStatus(submission.Status) {
+			res, resErr := getSubmissionResult(ctx, submission)
+			if resErr != nil {
+				return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch submission result", nil))
+			}
+			return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", res))
+		}
 
-	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", res))
+		select {
+		case <-ctx.Done():
+			// Client hung up (navigated away); stop holding the connection.
+			return nil
+		case <-deadline:
+			// The portal maps 408 to its "Check again" affordance.
+			return c.JSON(http.StatusRequestTimeout, dto.NewErrorResponse("Submission is still being judged", nil))
+		case <-ticker.C:
+		}
+
+		submission, err = db.Queries.GetSubmissionByID(ctx, submissionID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return c.JSON(http.StatusNotFound, dto.NewErrorResponse("Submission not found", nil))
+			}
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to get submission from database", nil))
+		}
+	}
+}
+
+const (
+	// Comfortably inside the portal's 130s axios timeout (api/submissions.ts).
+	resultLongPollTimeout = 120 * time.Second
+	resultPollInterval    = 500 * time.Millisecond
+)
+
+// isPendingStatus reports whether the judge is still working on a submission.
+// A nil status means the row was written before Judge0 answered, which is
+// pending too — never a terminal verdict.
+func isPendingStatus(status *string) bool {
+	if status == nil {
+		return true
+	}
+	return *status == utils.Judge0InQueue.GetJudge0Status() ||
+		*status == utils.Judge0Processing.GetJudge0Status()
 }
 
 func getSubmissionResult(ctx context.Context, submission sqlc.Submission) (dto.ResultResponse, error) {

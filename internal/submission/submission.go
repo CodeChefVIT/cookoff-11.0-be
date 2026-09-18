@@ -55,6 +55,9 @@ func CreateBatchSubmissionPayload(sourceCode string, languageID int, testCases [
 	if callbackURL == "" {
 		return nil, errors.New("environment variable CALLBACK_URL not set")
 	}
+	// Both sides read the same config value, so they cannot drift apart: if the
+	// secret is unset the URL is unchanged and the handler stays open.
+	callbackURL = utils.SignCallbackURL(callbackURL)
 
 	for i, testcase := range testCases {
 		execution_timeout_t, err := testcase.Runtime.Float64Value()
