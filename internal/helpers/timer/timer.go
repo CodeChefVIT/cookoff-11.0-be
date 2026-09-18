@@ -136,9 +136,9 @@ func SetTime(ctx context.Context, round int32, durationSeconds int64) (dto.Timer
 	}, nil
 }
 
-// UpdateTime adds time to (or sets the duration of) the current round. While
-// the round is running its end moves with it.
-func UpdateTime(ctx context.Context, additionalSeconds int64, newDurationSeconds *int64) (dto.TimerResponse, error) {
+// UpdateTime adds (or, when negative, removes) time on the current round.
+// While the round is running its end moves with it.
+func UpdateTime(ctx context.Context, additionalSeconds int64) (dto.TimerResponse, error) {
 	s, err := load(ctx)
 	if err != nil {
 		return dto.TimerResponse{}, err
@@ -146,26 +146,16 @@ func UpdateTime(ctx context.Context, additionalSeconds int64, newDurationSeconds
 	now := time.Now().UTC()
 	current := s.response(now)
 
-	duration := s.duration
-	if newDurationSeconds != nil && *newDurationSeconds > 0 {
-		duration = *newDurationSeconds
-	} else if additionalSeconds != 0 {
-		duration += additionalSeconds
-		if duration < 0 {
-			duration = 0
-		}
+	duration := s.duration + additionalSeconds
+	if duration < 0 {
+		duration = 0
 	}
 
 	pipe := utils.RedisClient.TxPipeline()
 	pipe.Set(ctx, KeyDuration, duration, 0)
 	if current.IsRunning {
-		start, end, _ := s.window()
-		newEnd := end
-		if additionalSeconds != 0 {
-			newEnd = end.Add(time.Duration(additionalSeconds) * time.Second)
-		} else if newDurationSeconds != nil && !start.IsZero() {
-			newEnd = start.Add(time.Duration(duration) * time.Second)
-		}
+		_, end, _ := s.window()
+		newEnd := end.Add(time.Duration(additionalSeconds) * time.Second)
 		pipe.Set(ctx, KeyEndTime, newEnd.Format(time.RFC3339), 0)
 		s.end = newEnd.Format(time.RFC3339)
 	}

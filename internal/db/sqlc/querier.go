@@ -14,7 +14,6 @@ import (
 type Querier interface {
 	BanUser(ctx context.Context, id uuid.UUID) (User, error)
 	CreateAttempt(ctx context.Context, arg CreateAttemptParams) (Attempt, error)
-	CreateGoogleUser(ctx context.Context, arg CreateGoogleUserParams) (User, error)
 	CreateQuestion(ctx context.Context, arg CreateQuestionParams) (Question, error)
 	CreateSubmission(ctx context.Context, arg CreateSubmissionParams) error
 	CreateSubmissionResult(ctx context.Context, arg CreateSubmissionResultParams) (SubmissionResult, error)
@@ -44,7 +43,6 @@ type Querier interface {
 	GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submission, error)
 	GetSubmissionForUpdate(ctx context.Context, id uuid.UUID) (Submission, error)
 	GetSubmissionResults(ctx context.Context, submissionID uuid.UUID) ([]SubmissionResult, error)
-	GetSubmissionStatusByID(ctx context.Context, id uuid.UUID) (*string, error)
 	GetSubmissionsAnalytics(ctx context.Context) (GetSubmissionsAnalyticsRow, error)
 	GetTestCaseByID(ctx context.Context, id uuid.UUID) (Testcase, error)
 	GetTotalUsersCount(ctx context.Context) (int32, error)

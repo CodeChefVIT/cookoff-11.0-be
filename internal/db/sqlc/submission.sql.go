@@ -150,15 +150,3 @@ func (q *Queries) GetSubmissionForUpdate(ctx context.Context, id uuid.UUID) (Sub
 	)
 	return i, err
 }
-
-const getSubmissionStatusByID = `-- name: GetSubmissionStatusByID :one
-SELECT status FROM submissions
-WHERE id = $1
-`
-
-func (q *Queries) GetSubmissionStatusByID(ctx context.Context, id uuid.UUID) (*string, error) {
-	row := q.db.QueryRow(ctx, getSubmissionStatusByID, id)
-	var status *string
-	err := row.Scan(&status)
-	return status, err
-}

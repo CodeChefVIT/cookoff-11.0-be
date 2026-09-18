@@ -465,10 +465,6 @@ func (ac *AdminController) SetTime(c echo.Context) error {
 	var durationSeconds int64 = 3600
 	if req.DurationSeconds != nil && *req.DurationSeconds > 0 {
 		durationSeconds = *req.DurationSeconds
-	} else if req.DurationMinutes != nil && *req.DurationMinutes > 0 {
-		durationSeconds = *req.DurationMinutes * 60
-	} else if req.Duration != nil && *req.Duration > 0 {
-		durationSeconds = *req.Duration
 	}
 
 	var round int32 = 1
@@ -495,19 +491,9 @@ func (ac *AdminController) UpdateTime(c echo.Context) error {
 	var additionalSeconds int64
 	if req.AdditionalSeconds != nil {
 		additionalSeconds = *req.AdditionalSeconds
-	} else if req.AdditionalMinutes != nil {
-		additionalSeconds = *req.AdditionalMinutes * 60
-	} else if req.AdditionalTime != nil {
-		additionalSeconds = *req.AdditionalTime
 	}
 
-	var newDurationSeconds *int64
-	if req.Duration != nil && *req.Duration > 0 {
-		sec := *req.Duration
-		newDurationSeconds = &sec
-	}
-
-	res, err := timer.UpdateTime(c.Request().Context(), additionalSeconds, newDurationSeconds)
+	res, err := timer.UpdateTime(c.Request().Context(), additionalSeconds)
 	if err != nil {
 		logging.Errorf("UpdateTime failed: %v", err)
 		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to update round timer", dto.CodeInternal))

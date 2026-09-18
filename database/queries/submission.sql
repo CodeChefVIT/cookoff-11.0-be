@@ -23,9 +23,6 @@ WHERE id = $1
 FOR UPDATE;
 
 
--- name: GetSubmissionStatusByID :one
-SELECT status FROM submissions
-WHERE id = $1;
 
 -- name: GetBestScoreForQuestion :one
 SELECT (

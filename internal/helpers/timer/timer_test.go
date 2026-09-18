@@ -99,7 +99,7 @@ func TestUpdateTimeMovesEnd(t *testing.T) {
 	_, _ = SetTime(ctx, 1, 60)
 	round := int32(1)
 	before, _ := StartRound(ctx, &round)
-	after, err := UpdateTime(ctx, 120, nil)
+	after, err := UpdateTime(ctx, 120)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestUpdateTimeMovesEnd(t *testing.T) {
 		t.Fatalf("end moved by %v", a.Sub(b))
 	}
 	// Shortening past now ends the round.
-	if res, _ := UpdateTime(ctx, -3600, nil); res.IsRunning {
+	if res, _ := UpdateTime(ctx, -3600); res.IsRunning {
 		t.Fatalf("shortened round still running: %+v", res)
 	}
 }

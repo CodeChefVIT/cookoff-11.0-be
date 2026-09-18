@@ -11,45 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const createGoogleUser = `-- name: CreateGoogleUser :one
-INSERT INTO users (id, email, reg_no, role, google_id, name) VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, email, reg_no, role, round_qualified, google_id, balance, score, name, is_banned
-`
-
-type CreateGoogleUserParams struct {
-	ID       uuid.UUID
-	Email    string
-	RegNo    string
-	Role     string
-	GoogleID *string
-	Name     string
-}
-
-func (q *Queries) CreateGoogleUser(ctx context.Context, arg CreateGoogleUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createGoogleUser,
-		arg.ID,
-		arg.Email,
-		arg.RegNo,
-		arg.Role,
-		arg.GoogleID,
-		arg.Name,
-	)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.Email,
-		&i.RegNo,
-		&i.Role,
-		&i.RoundQualified,
-		&i.GoogleID,
-		&i.Balance,
-		&i.Score,
-		&i.Name,
-		&i.IsBanned,
-	)
-	return i, err
-}
-
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, email, reg_no, role, round_qualified, google_id, balance, score, name, is_banned FROM users WHERE email = $1
 `
