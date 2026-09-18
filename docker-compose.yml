@@ -74,7 +74,7 @@ services:
     container_name: cookoff_11_api
     restart: unless-stopped
     ports:
-      - "${PORT:-8080}:${PORT:-8080}"
+    - "127.0.0.1:8080:8080"
     environment:
       - ENV=production
       - PORT=${PORT:-8080}
