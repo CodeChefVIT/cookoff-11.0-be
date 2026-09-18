@@ -82,6 +82,7 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("User not qualified for this round", nil))
 	}
 
+	//do question ownership check only when it is 2nd round
 	if currentRound==2{
 		attempt, err := db.Queries.GetAttempt(ctx, sqlc.GetAttemptParams{
 			UserID:     userID,
