@@ -221,6 +221,7 @@ func runOnJudge0(client *http.Client, sourceCode string, languageID int, tc sqlc
 	decodeBase64Field(out.StdOut)
 	decodeBase64Field(out.StdErr)
 	decodeBase64Field(out.Message)
+	decodeBase64Field(out.CompileOutput)
 	return out, nil
 }
 
