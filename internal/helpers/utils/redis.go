@@ -85,3 +85,46 @@ func SubmissionResultKey(submissionID string) string {
 func CacheSubmissionResult(ctx context.Context, submissionID string, result interface{}) error {
 	return SetCache(ctx, SubmissionResultKey(submissionID), result, 30*time.Minute)
 }
+
+// AuthUserTTL bounds how stale a cached ban/role/round can be if an
+// invalidation is ever missed. Admin writes invalidate immediately.
+const AuthUserTTL = 15 * time.Second
+
+const authUserPrefix = "authuser:"
+
+func AuthUserKey(userID string) string {
+	return authUserPrefix + userID
+}
+
+// InvalidateAuthUser drops the cached authorization view of one user.
+func InvalidateAuthUser(ctx context.Context, userID string) {
+	if RedisClient == nil {
+		return
+	}
+	if err := RedisClient.Del(ctx, AuthUserKey(userID)).Err(); err != nil {
+		logging.Warnf("invalidate auth user %s: %v", userID, err)
+	}
+}
+
+// InvalidateAllAuthUsers drops every cached authorization view, e.g. after
+// promoting everyone to the next round.
+func InvalidateAllAuthUsers(ctx context.Context) {
+	if RedisClient == nil {
+		return
+	}
+	iter := RedisClient.Scan(ctx, 0, authUserPrefix+"*", 500).Iterator()
+	var keys []string
+	for iter.Next(ctx) {
+		keys = append(keys, iter.Val())
+		if len(keys) == 500 {
+			RedisClient.Del(ctx, keys...)
+			keys = keys[:0]
+		}
+	}
+	if len(keys) > 0 {
+		RedisClient.Del(ctx, keys...)
+	}
+	if err := iter.Err(); err != nil {
+		logging.Warnf("invalidate all auth users: %v", err)
+	}
+}
