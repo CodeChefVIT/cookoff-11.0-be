@@ -53,30 +53,32 @@ func (ac *AuthController) GoogleCallback(c echo.Context) error {
 	validState := auth.ValidateState(stateCookie, c.QueryParam("state"))
 	c.SetCookie(auth.ClearStateCookie())
 	if err != nil || !validState || c.QueryParam("code") == "" {
-		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Invalid OAuth callback", nil))
+		return loginFailed(c, "oauth_failed")
 	}
 	identity, err := ac.googleIdentity(c.Request().Context(), c.QueryParam("code"))
 	if err != nil {
 		logging.Errorf("Google authentication failed: %v", err)
-		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Google authentication failed", nil))
+		return loginFailed(c, "oauth_failed")
 	}
 	user, err := ac.findUser(c.Request().Context(), identity)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Account is not registered", nil))
+			return loginFailed(c, "not_registered")
 		}
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Unable to establish session", nil))
+		logging.Errorf("OAuth find user: %v", err)
+		return loginFailed(c, "server_error")
 	}
 	if user.IsBanned {
 		for _, cookie := range auth.ClearSessionCookies() {
 			c.SetCookie(cookie)
 		}
 
-		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Account is banned", nil))
+		return loginFailed(c, "banned")
 	}
 	cookies, err := auth.SessionCookies(auth.User{ID: user.ID.String(), Email: user.Email, Role: user.Role})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Unable to establish session", nil))
+		logging.Errorf("OAuth session cookies: %v", err)
+		return loginFailed(c, "server_error")
 	}
 	for _, cookie := range cookies {
 		c.SetCookie(cookie)
@@ -103,7 +105,7 @@ func (ac *AuthController) RefreshToken(c echo.Context) error {
 	}
 	cookies, err := auth.SessionCookies(auth.User{ID: user.ID.String(), Email: user.Email, Role: user.Role})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Unable to refresh session", nil))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Unable to refresh session", dto.CodeInternal))
 	}
 	for _, sessionCookie := range cookies {
 		c.SetCookie(sessionCookie)
@@ -123,7 +125,7 @@ func (ac *AuthController) unauthorized(c echo.Context) error {
 		c.SetCookie(cookie)
 	}
 
-	return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Unauthorized", nil))
+	return c.JSON(http.StatusUnauthorized, dto.NewCodedError("Unauthorized", dto.CodeUnauthorized))
 }
 
 type googleIdentity struct{ Subject, Email, Name string }
@@ -216,6 +218,13 @@ func (ac *AuthController) findUser(ctx context.Context, identity googleIdentity)
 		return sqlc.User{}, err
 	}
 	return linked, nil
+}
+
+// loginFailed sends the browser back to the portal's login page with a
+// reason code instead of stranding it on a JSON error from the API domain.
+func loginFailed(c echo.Context, reason string) error {
+	target := strings.TrimRight(utils.Config.FrontendURL, "/") + "/login?" + url.Values{"error": {reason}}.Encode()
+	return c.Redirect(http.StatusFound, target)
 }
 
 func redirectURL(role string) string {
