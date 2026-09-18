@@ -13,11 +13,11 @@ type DashboardQuestion struct {
 }
 
 type DashboardRoundStatus struct {
-	Round              int    `json:"round"`
-	Status             string `json:"status"`
-	QuestionsCompleted int    `json:"questions_completed"`
-	QuestionIncomplete int    `json:"questions_incomplete"`
-	Score              int    `json:"score"`
+	Round               int    `json:"round"`
+	Status              string `json:"status"`
+	QuestionsCompleted  int    `json:"questions_completed"`
+	QuestionsIncomplete int    `json:"questions_incomplete"`
+	Score               int    `json:"score"`
 }
 
 type DashboardResponse struct {
