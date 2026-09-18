@@ -95,7 +95,10 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 			question, qErr := db.Queries.GetQuestionByID(ctx, sub.QuestionID)
 			testcases, tcErr := db.Queries.GetAllTestCasesByQuestion(ctx, sub.QuestionID)
 			if qErr == nil && tcErr == nil && len(testcases) > 0 {
-				pointsAwarded = int32(question.Points / int32(len(testcases)))
+				calcPoints := int64(question.Points) / int64(len(testcases))
+				if calcPoints >= 0 && calcPoints <= 2147483647 {
+					pointsAwarded = int32(calcPoints)
+				}
 			} else {
 				pointsAwarded = 1
 			}

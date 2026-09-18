@@ -150,9 +150,9 @@ func (c *AttemptController) createAttempt(
 
 	var buyIn float64
 	if question.Round != 1 {
-		buyInNumeric, err := qtx.GetQuestionBuyIn(ctx, questionID)
-		if err != nil {
-			return nil, err
+		buyInNumeric, getErr := qtx.GetQuestionBuyIn(ctx, questionID)
+		if getErr != nil {
+			return nil, getErr
 		}
 		buyIn, err = utils.NumericToFloat64(buyInNumeric)
 		if err != nil {
