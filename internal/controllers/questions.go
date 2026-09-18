@@ -9,6 +9,7 @@ import (
 
 	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/timer"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
@@ -49,7 +50,34 @@ func questionError(c echo.Context, s int, m string, err ...error) error {
 			logging.Errorf("Question controller error [%d]: %s", s, m)
 		}
 	}
-	return c.JSON(s, dto.NewErrorResponse(m, nil))
+	return c.JSON(s, dto.NewCodedError(m, dto.CodeForStatus(s)))
+}
+
+// roundOpened reports whether players may read round's questions: the contest
+// clock has started that round (running or already over), or moved past it.
+// Before that, even a qualified player gets nothing, so an early promotion
+// does not leak the next round's problems.
+func roundOpened(ctx context.Context, round int32) (bool, error) {
+	status, err := timer.GetTime(ctx)
+	if err != nil {
+		return false, err
+	}
+	return status.Round > round || (status.Round == round && status.StartTime != nil), nil
+}
+
+// requireRoundOpened writes the error response and returns false when round
+// has not been opened yet.
+func requireRoundOpened(c echo.Context, round int32) bool {
+	opened, err := roundOpened(c.Request().Context(), round)
+	if err != nil {
+		_ = questionError(c, http.StatusInternalServerError, "Failed to check round timer", err)
+		return false
+	}
+	if !opened {
+		_ = c.JSON(http.StatusLocked, dto.NewCodedError("This round has not started yet", dto.CodeRoundNotRunning))
+		return false
+	}
+	return true
 }
 
 func (qc *QuestionController) ListByRound(c echo.Context) error {
@@ -57,9 +85,16 @@ func (qc *QuestionController) ListByRound(c echo.Context) error {
 	if e != nil {
 		return questionError(c, http.StatusUnauthorized, "Unauthorized")
 	}
+	user, ok := middlewares.CurrentUser(c)
+	if !ok || user.ID != id {
+		return questionError(c, http.StatusUnauthorized, "Unauthorized")
+	}
+	if !requireRoundOpened(c, user.RoundQualified) {
+		return nil
+	}
 	rows, e := qc.queries.ListQuestionsForUser(c.Request().Context(), id)
 	if e != nil {
-		return questionError(c, http.StatusInternalServerError, "Failed to load questions")
+		return questionError(c, http.StatusInternalServerError, "Failed to load questions", e)
 	}
 	out := make([]dto.QuestionResponse, len(rows))
 	for i, q := range rows {
@@ -81,7 +116,10 @@ func (qc *QuestionController) GetByID(c echo.Context) error {
 		return questionError(c, http.StatusNotFound, "Question not found")
 	}
 	if e != nil {
-		return questionError(c, http.StatusInternalServerError, "Failed to load question")
+		return questionError(c, http.StatusInternalServerError, "Failed to load question", e)
+	}
+	if !requireRoundOpened(c, q.Round) {
+		return nil
 	}
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Question retrieved", questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive)))
 }
@@ -97,6 +135,9 @@ func (qc *QuestionController) ListBlocks(c echo.Context) error {
 	q, e := qc.queries.GetQuestionForUser(c.Request().Context(), sqlc.GetQuestionForUserParams{ID: qid, ID_2: uid})
 	if e != nil || q.Round != 1 || !strings.EqualFold(q.QType, "visual") {
 		return questionError(c, http.StatusNotFound, "Round 1 visual question not found")
+	}
+	if !requireRoundOpened(c, q.Round) {
+		return nil
 	}
 	blocks, e := qc.queries.ListVisualBlocksByQuestionID(c.Request().Context(), qid)
 	if e != nil {

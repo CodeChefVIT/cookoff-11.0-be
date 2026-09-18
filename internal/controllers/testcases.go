@@ -39,7 +39,7 @@ func testcaseError(c echo.Context, s int, m string, err ...error) error {
 			logging.Errorf("Testcase controller error [%d]: %s", s, m)
 		}
 	}
-	return c.JSON(s, dto.NewErrorResponse(m, nil))
+	return c.JSON(s, dto.NewCodedError(m, dto.CodeForStatus(s)))
 }
 func (tc *TestcaseController) Create(c echo.Context) error {
 	var r dto.TestcaseRequest
@@ -152,10 +152,14 @@ func (tc *TestcaseController) ListPublic(c echo.Context) error {
 	if e != nil {
 		return testcaseError(c, http.StatusUnauthorized, "Unauthorized")
 	}
-	if _, e = tc.queries.GetQuestionForUser(c.Request().Context(), sqlc.GetQuestionForUserParams{ID: qid, ID_2: uid}); errors.Is(e, pgx.ErrNoRows) {
+	q, e := tc.queries.GetQuestionForUser(c.Request().Context(), sqlc.GetQuestionForUserParams{ID: qid, ID_2: uid})
+	if errors.Is(e, pgx.ErrNoRows) {
 		return testcaseError(c, http.StatusNotFound, "Question not found")
 	} else if e != nil {
-		return testcaseError(c, http.StatusInternalServerError, "Failed to verify question")
+		return testcaseError(c, http.StatusInternalServerError, "Failed to verify question", e)
+	}
+	if !requireRoundOpened(c, q.Round) {
+		return nil
 	}
 	rows, e := tc.queries.GetPublicTestCasesByQuestion(c.Request().Context(), qid)
 	if e != nil {
