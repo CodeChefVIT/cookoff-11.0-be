@@ -127,14 +127,28 @@ func (c *VisualSubmissionController) submitVisualSolution(
 	)
 
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return 0, echo.NewHTTPError(http.StatusForbidden, "Question not bought yet")
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return 0, err
 		}
-		return 0, err
-	}
-
-	if attempt.Status == "available" {
-		return 0, echo.NewHTTPError(http.StatusForbidden, "Question not bought yet")
+		// Since Round 1 has no buy-in economy, auto-create an attempt for the user
+		attempt, err = qtx.CreateAttempt(ctx, sqlc.CreateAttemptParams{
+			ID:          uuid.New(),
+			UserID:      userID,
+			QuestionID:  req.QuestionID,
+			Status:      "bought",
+			IsBuyInPaid: true,
+		})
+		if err != nil {
+			return 0, err
+		}
+	} else if attempt.Status == "available" {
+		attempt, err = qtx.UpdateAttemptToBought(ctx, sqlc.UpdateAttemptToBoughtParams{
+			UserID:     userID,
+			QuestionID: req.QuestionID,
+		})
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	availableBlocks, err := qtx.ListVisualBlocksByQuestionID(

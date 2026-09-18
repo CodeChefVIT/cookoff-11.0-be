@@ -26,9 +26,7 @@ type DashboardResponse struct {
 	Email          string                  `json:"email"`
 	Balance        string                  `json:"balance"`
 	Score          string                  `json:"score"`
-	MaxScore       string                  `json:"max_score"`
 	RoundQualified int32                   `json:"round_qualified"`
-	Questions      []DashboardQuestion     `json:"questions"`
 	AttemptTotals  map[string]int          `json:"attempt_totals"`
 	CurrentRound   int                     `json:"current_round"`
 	RoundStatus    [3]DashboardRoundStatus `json:"round_status"`

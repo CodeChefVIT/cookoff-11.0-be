@@ -3,18 +3,18 @@ package controllers
 import (
 	"context"
 	"net/http"
-	"strconv"
+
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/timer"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
 type dashboardQueries interface {
 	GetUserByID(context.Context, uuid.UUID) (sqlc.User, error)
-	ListDashboardQuestions(context.Context, uuid.UUID) ([]sqlc.ListDashboardQuestionsRow, error)
+	GetDashboardRoundStats(context.Context, uuid.UUID) ([]sqlc.GetDashboardRoundStatsRow, error)
 }
 
 func Dashboard(q dashboardQueries) echo.HandlerFunc {
@@ -23,7 +23,7 @@ func Dashboard(q dashboardQueries) echo.HandlerFunc {
 		if e != nil {
 			return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("unauthorized", nil))
 		}
-		ctx:=c.Request().Context()
+		ctx := c.Request().Context()
 
 		u, e := q.GetUserByID(ctx, id)
 		if e != nil {
@@ -37,9 +37,9 @@ func Dashboard(q dashboardQueries) echo.HandlerFunc {
 			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to load dashboard", nil))
 		}
 
-		rows, e := q.ListDashboardQuestions(ctx, id)
+		statsRows, e := q.GetDashboardRoundStats(ctx, id)
 		if e != nil {
-			logging.Errorf("Dashboard error loading questions for user %s: %v", id, e)
+			logging.Errorf("Dashboard error loading stats for user %s: %v", id, e)
 			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to load dashboard", nil))
 		}
 
@@ -48,7 +48,6 @@ func Dashboard(q dashboardQueries) echo.HandlerFunc {
 			Name:           u.Name,
 			Email:          u.Email,
 			RoundQualified: u.RoundQualified,
-			Questions:      make([]dto.DashboardQuestion, len(rows)),
 			AttemptTotals:  map[string]int{"available": 0, "bought": 0, "answered": 0},
 			CurrentRound:   int(timer.GetCurrentRound(ctx)),
 			RoundStatus: [3]dto.DashboardRoundStatus{
@@ -70,30 +69,14 @@ func Dashboard(q dashboardQueries) echo.HandlerFunc {
 
 		d.Balance = numericText(u.Balance)
 		d.Score = numericText(u.Score)
-		maxScore := 0
-		for i, r := range rows {
-			d.Questions[i] = dto.DashboardQuestion{
-				ID:            r.ID,
-				Title:         r.Title,
-				Points:        r.Points,
-				Round:         r.Round,
-				AttemptStatus: r.AttemptStatus,
+		for _, row := range statsRows {
+			if row.Round >= 1 && int(row.Round) <= len(d.RoundStatus) {
+				idx := row.Round - 1
+				d.RoundStatus[idx].QuestionsCompleted = int(row.QuestionsCompleted)
+				d.RoundStatus[idx].QuestionsIncomplete = int(row.QuestionsIncomplete)
+				d.RoundStatus[idx].Score = int(row.RoundScore)
 			}
-
-			if r.Round >= 1 && int(r.Round) <= len(d.RoundStatus) {
-				idx := r.Round - 1
-				if r.AttemptStatus == "answered" {
-					d.RoundStatus[idx].QuestionsCompleted++
-					d.RoundStatus[idx].Score += int(r.Points)
-				} else if r.AttemptStatus == "bought" {
-					d.RoundStatus[idx].QuestionsIncomplete++
-				}
-			}
-
-			maxScore += int(r.Points)
-			d.AttemptTotals[r.AttemptStatus]++
 		}
-		d.MaxScore = strconv.Itoa(maxScore)
 		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Dashboard retrieved", d))
 	}
 }

@@ -83,9 +83,8 @@ WHERE id = $1
 
 func (q *Queries) GetRoundOneVisualQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, getRoundOneVisualQuestion, id)
-	var id_2 uuid.UUID
-	err := row.Scan(&id_2)
-	return id_2, err
+	err := row.Scan(&id)
+	return id, err
 }
 
 const listQuestionsByRound = `-- name: ListQuestionsByRound :many
