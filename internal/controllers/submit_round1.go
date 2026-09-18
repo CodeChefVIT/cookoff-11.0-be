@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -55,23 +58,18 @@ func (c *VisualSubmissionController) SubmitVisualSolution(ctx echo.Context) erro
 		))
 	}
 
-	userIDValue, ok := ctx.Get("user_id").(string)
+	user, ok := middlewares.CurrentUser(ctx)
 	if !ok {
-		return ctx.JSON(http.StatusUnauthorized, dto.NewErrorResponse(
-			"Unauthorized", nil,
-		))
+		return ctx.JSON(http.StatusUnauthorized, dto.NewCodedError("Unauthorized", dto.CodeUnauthorized))
 	}
-
-	userID, err := uuid.Parse(userIDValue)
-	if err != nil {
-		return ctx.JSON(http.StatusBadRequest, dto.NewErrorResponse(
-			"Invalid user ID", nil,
-		))
-	}
+	userID := user.ID
 
 	// Visual questions only exist in round 1 (GetRoundOneVisualQuestion).
 	if !ensureRoundRunning(ctx, 1) {
 		return nil
+	}
+	if user.RoundQualified != 1 {
+		return ctx.JSON(http.StatusForbidden, dto.NewCodedError("User not qualified for this round", dto.CodeNotQualified))
 	}
 
 	outcome, err := c.submitVisualSolution(
@@ -83,14 +81,11 @@ func (c *VisualSubmissionController) SubmitVisualSolution(ctx echo.Context) erro
 	if err != nil {
 		var httpErr *echo.HTTPError
 		if errors.As(err, &httpErr) {
-			return ctx.JSON(httpErr.Code, dto.NewErrorResponse(
-				httpErr.Message.(string), nil,
-			))
+			return ctx.JSON(httpErr.Code, dto.NewCodedError(fmt.Sprint(httpErr.Message), dto.CodeForStatus(httpErr.Code)))
 		}
 
-		return ctx.JSON(http.StatusInternalServerError, dto.NewErrorResponse(
-			"Internal server error", nil,
-		))
+		logging.Errorf("visual submit: %v", err)
+		return ctx.JSON(http.StatusInternalServerError, dto.NewCodedError("Internal server error", dto.CodeInternal))
 	}
 
 	status := "wrong answer"
@@ -151,13 +146,20 @@ func (c *VisualSubmissionController) submitVisualSolution(
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return visualOutcome{}, err
 		}
-		// Since Round 1 has no buy-in economy, auto-create an attempt for the user
-		attempt, err = qtx.CreateAttempt(ctx, sqlc.CreateAttemptParams{
-			ID:          uuid.New(),
-			UserID:      userID,
-			QuestionID:  req.QuestionID,
-			Status:      "bought",
-			IsBuyInPaid: true,
+		// Round 1 has no buy-in, so the first submission opens the attempt.
+		// ON CONFLICT DO NOTHING plus the locking re-read means two
+		// concurrent first submissions share one row instead of one of them
+		// failing on the unique constraint.
+		if err = qtx.EnsureAttempt(ctx, sqlc.EnsureAttemptParams{
+			ID:         uuid.New(),
+			UserID:     userID,
+			QuestionID: req.QuestionID,
+		}); err != nil {
+			return visualOutcome{}, err
+		}
+		attempt, err = qtx.GetAttemptForUpdate(ctx, sqlc.GetAttemptForUpdateParams{
+			UserID:     userID,
+			QuestionID: req.QuestionID,
 		})
 		if err != nil {
 			return visualOutcome{}, err
