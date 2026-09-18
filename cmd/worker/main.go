@@ -13,8 +13,6 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-const workerConcurrency = 10
-
 func main() {
 
 	logging.InitLogger()
@@ -28,6 +26,8 @@ func main() {
 
 	utils.InitTokenCache()
 	defer utils.CloseTokenCache()
+
+	workerConcurrency := utils.Config.WorkerCount
 
 	srv := asynq.NewServer(
 		queue.RedisOpt(),

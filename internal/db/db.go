@@ -64,6 +64,10 @@ func InitDB() {
 		logging.Infof("Enabled SQL query tracer for pgx")
 	}
 
+	if utils.Config.PostgresMaxConns > 0 {
+		config.MaxConns = utils.Config.PostgresMaxConns
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

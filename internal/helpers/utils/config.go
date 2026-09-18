@@ -56,6 +56,12 @@ type cfg struct {
 	// open, exactly as before.
 	Judge0CallbackSecret string `env:"JUDGE0_CALLBACK_SECRET"`
 	Judge0URI            string `env:"JUDGE0_URI"`
+
+	RateLimitMax    int           `env:"RATE_LIMIT_MAX" envDefault:"15"`
+	RateLimitWindow time.Duration `env:"RATE_LIMIT_WINDOW" envDefault:"1s"`
+
+	WorkerCount      int   `env:"WORKER_COUNT" envDefault:"10"`
+	PostgresMaxConns int32 `env:"POSTGRES_MAX_CONNS" envDefault:"20"`
 }
 
 var Config cfg
