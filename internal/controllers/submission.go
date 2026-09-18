@@ -69,6 +69,11 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch question", nil))
 	}
 
+	currentRound:=int(timer.GetCurrentRound(ctx))
+	if currentRound != int(question.Round) {
+		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Round not active", nil))
+	}
+
 	if question.Round == 1 || question.QType == "visual" {
 		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse("Code submission is only available for Round 2 and Round 3 questions", nil))
 	}
@@ -76,31 +81,24 @@ func SubmitCode(c echo.Context) error {
 	if user.RoundQualified < question.Round {
 		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("User not qualified for this round", nil))
 	}
-	if timer.GetCurrentRound(ctx) != question.Round {
-		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Round not active", nil))
-	}
-	
 
-	// The buy-in/reward economy applies to every round's code questions, not
-	// just the visual one — mirrors the same check submit_round1.go already
-	// performs for visual submissions. Without this, a user can skip
-	// POST /attempts/:id entirely and still collect the reward on a correct
-	// submission, since EnsureAttempt would otherwise silently backfill an
-	// attempt row at result-finalize time.
-	attempt, err := db.Queries.GetAttempt(ctx, sqlc.GetAttemptParams{
-		UserID:     userID,
-		QuestionID: questionID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+	if currentRound==2{
+		attempt, err := db.Queries.GetAttempt(ctx, sqlc.GetAttemptParams{
+			UserID:     userID,
+			QuestionID: questionID,
+		})
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Question not purchased — buy this question before submitting", nil))
+			}
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
+		}
+		if !(attempt.Status == "bought" || attempt.Status == "answered") {
 			return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Question not purchased — buy this question before submitting", nil))
 		}
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
-	}
-	if !attemptAllowsSubmission(attempt.Status) {
-		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Question not purchased — buy this question before submitting", nil))
-	}
 
+	} 
+	
 	submissionID := uuid.New()
 	logging.Infof("Created submission ID: %v", submissionID)
 
@@ -183,11 +181,3 @@ func SubmitCode(c echo.Context) error {
 	}))
 }
 
-// attemptAllowsSubmission reports whether an attempt's status permits a code
-// submission to be judged. Mirrors the check submit_round1.go already
-// performs for visual submissions — "available" (or a missing row) must
-// never reach Judge0, since EnsureAttempt would otherwise silently backfill
-// an unpaid attempt at result-finalize time and still pay out the reward.
-func attemptAllowsSubmission(status string) bool {
-	return status == "bought" || status == "answered"
-}
