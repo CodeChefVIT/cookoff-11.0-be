@@ -16,7 +16,7 @@ CREATE INDEX idx_submissions_submission_time ON submissions(submission_time);
 DROP INDEX IF EXISTS idx_visual_blocks_question_id;
 DROP INDEX IF EXISTS idx_visual_solutions_question_id;
 DROP INDEX IF EXISTS idx_questions_round;
-DROP INDEX IF EXISTS idx_submissions_user_question ON submissions(user_id, question_id);idx_submissions_user_question ON submissions(user_id, question_id);
+DROP INDEX IF EXISTS idx_submissions_user_question;
 DROP INDEX IF EXISTS idx_testcases_question_id;
 DROP INDEX IF EXISTS idx_submission_results_testcase_id;
 DROP INDEX IF EXISTS idx_submission_results_submission_id;
