@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -329,12 +330,23 @@ func (ac *AdminController) GetUserSubmissions(c echo.Context) error {
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("User submissions fetched successfully", res))
 }
 
+// leaderboardTTL keeps an admin panel that polls the leaderboard from
+// re-running the full aggregate over every submission each time.
+const leaderboardTTL = 10 * time.Second
+
 func (ac *AdminController) GetLeaderboard(c echo.Context) error {
-	ctx := c.Request().Context()
-	data, err := ac.queries.GetLeaderboardData(ctx)
+	res, err := utils.Cached(c.Request().Context(), "cache:leaderboard", leaderboardTTL, ac.buildLeaderboard)
 	if err != nil {
 		logging.Errorf("GetLeaderboard failed: %v", err)
 		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to fetch leaderboard data", dto.CodeInternal))
+	}
+	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Leaderboard fetched successfully", res))
+}
+
+func (ac *AdminController) buildLeaderboard(ctx context.Context) ([]dto.LeaderboardEntry, error) {
+	data, err := ac.queries.GetLeaderboardData(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]dto.LeaderboardEntry, len(data))
@@ -363,8 +375,7 @@ func (ac *AdminController) GetLeaderboard(c echo.Context) error {
 			IsBanned:           row.IsBanned,
 		}
 	}
-
-	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Leaderboard fetched successfully", res))
+	return res, nil
 }
 
 func (ac *AdminController) GetAnalytics(c echo.Context) error {

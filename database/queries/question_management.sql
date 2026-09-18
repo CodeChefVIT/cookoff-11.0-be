@@ -32,14 +32,3 @@ SELECT q.id, q.description, q.title, q.q_type, q.input_format,
 FROM questions q
 JOIN users u ON u.id = $2
 WHERE q.id = $1 AND q.round = u.round_qualified;
-
--- name: ListQuestionsForUser :many
-SELECT q.id, q.description, q.title, q.q_type, q.input_format,
-       COALESCE(q.buy_in::text, ''::text) AS buy_in,
-       COALESCE(q.reward::text, ''::text) AS reward, q.points, q.round,
-       q.constraints, q.output_format, q.sample_test_input, q.sample_test_output,
-       q.explanation, q.bounty_active
-FROM questions q
-JOIN users u ON u.id = $1
-WHERE q.round = u.round_qualified
-ORDER BY q.title ASC, q.id ASC;

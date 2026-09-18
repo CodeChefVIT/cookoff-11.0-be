@@ -109,22 +109,5 @@ func InvalidateAuthUser(ctx context.Context, userID string) {
 // InvalidateAllAuthUsers drops every cached authorization view, e.g. after
 // promoting everyone to the next round.
 func InvalidateAllAuthUsers(ctx context.Context) {
-	if RedisClient == nil {
-		return
-	}
-	iter := RedisClient.Scan(ctx, 0, authUserPrefix+"*", 500).Iterator()
-	var keys []string
-	for iter.Next(ctx) {
-		keys = append(keys, iter.Val())
-		if len(keys) == 500 {
-			RedisClient.Del(ctx, keys...)
-			keys = keys[:0]
-		}
-	}
-	if len(keys) > 0 {
-		RedisClient.Del(ctx, keys...)
-	}
-	if err := iter.Err(); err != nil {
-		logging.Warnf("invalidate all auth users: %v", err)
-	}
+	DeleteByPattern(ctx, authUserPrefix+"*")
 }

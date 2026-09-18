@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
@@ -20,8 +21,8 @@ import (
 )
 
 type questionQueries interface {
-	ListQuestionsForUser(context.Context, uuid.UUID) ([]sqlc.ListQuestionsForUserRow, error)
-	GetQuestionForUser(context.Context, sqlc.GetQuestionForUserParams) (sqlc.GetQuestionForUserRow, error)
+	questionReader
+	ListQuestionsByRound(context.Context, int32) ([]sqlc.ListQuestionsByRoundRow, error)
 	ListVisualBlocksByQuestionID(context.Context, uuid.UUID) ([]sqlc.VisualBlock, error)
 	CreateQuestion(context.Context, sqlc.CreateQuestionParams) (sqlc.Question, error)
 	UpdateQuestion(context.Context, sqlc.UpdateQuestionParams) (sqlc.Question, error)
@@ -80,25 +81,70 @@ func requireRoundOpened(c echo.Context, round int32) bool {
 	return true
 }
 
-func (qc *QuestionController) ListByRound(c echo.Context) error {
-	id, e := userID(c)
-	if e != nil {
-		return questionError(c, http.StatusUnauthorized, "Unauthorized")
-	}
+// contentTTL bounds how long players can see a question edit late if an
+// invalidation is missed; admin writes invalidate immediately.
+const contentTTL = 30 * time.Second
+
+// visibleQuestion returns question qid when the signed-in player may read it:
+// it belongs to their round and that round has opened. It writes the error
+// response and returns false otherwise.
+func visibleQuestion(c echo.Context, queries questionReader, qid uuid.UUID) (dto.QuestionResponse, bool) {
 	user, ok := middlewares.CurrentUser(c)
-	if !ok || user.ID != id {
+	if !ok {
+		_ = questionError(c, http.StatusUnauthorized, "Unauthorized")
+		return dto.QuestionResponse{}, false
+	}
+	q, e := cachedQuestion(c.Request().Context(), queries, qid)
+	if errors.Is(e, pgx.ErrNoRows) || (e == nil && q.Round != user.RoundQualified) {
+		_ = questionError(c, http.StatusNotFound, "Question not found")
+		return dto.QuestionResponse{}, false
+	}
+	if e != nil {
+		_ = questionError(c, http.StatusInternalServerError, "Failed to load question", e)
+		return dto.QuestionResponse{}, false
+	}
+	if !requireRoundOpened(c, q.Round) {
+		return dto.QuestionResponse{}, false
+	}
+	return q, true
+}
+
+type questionReader interface {
+	GetQuestionByID(context.Context, uuid.UUID) (sqlc.GetQuestionByIDRow, error)
+}
+
+func cachedQuestion(ctx context.Context, queries questionReader, qid uuid.UUID) (dto.QuestionResponse, error) {
+	return utils.Cached(ctx, utils.ContentCachePrefix+"question:"+qid.String(), contentTTL, func(ctx context.Context) (dto.QuestionResponse, error) {
+		q, err := queries.GetQuestionByID(ctx, qid)
+		if err != nil {
+			return dto.QuestionResponse{}, err
+		}
+		return questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive), nil
+	})
+}
+
+func (qc *QuestionController) ListByRound(c echo.Context) error {
+	user, ok := middlewares.CurrentUser(c)
+	if !ok {
 		return questionError(c, http.StatusUnauthorized, "Unauthorized")
 	}
 	if !requireRoundOpened(c, user.RoundQualified) {
 		return nil
 	}
-	rows, e := qc.queries.ListQuestionsForUser(c.Request().Context(), id)
+	round := user.RoundQualified
+	out, e := utils.Cached(c.Request().Context(), utils.ContentCachePrefix+"round:"+strconv.Itoa(int(round)), contentTTL, func(ctx context.Context) ([]dto.QuestionResponse, error) {
+		rows, err := qc.queries.ListQuestionsByRound(ctx, round)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]dto.QuestionResponse, len(rows))
+		for i, q := range rows {
+			out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive)
+		}
+		return out, nil
+	})
 	if e != nil {
 		return questionError(c, http.StatusInternalServerError, "Failed to load questions", e)
-	}
-	out := make([]dto.QuestionResponse, len(rows))
-	for i, q := range rows {
-		out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive)
 	}
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Questions retrieved", out))
 }
@@ -107,45 +153,37 @@ func (qc *QuestionController) GetByID(c echo.Context) error {
 	if e != nil {
 		return questionError(c, http.StatusBadRequest, "Invalid question ID")
 	}
-	uid, e := userID(c)
-	if e != nil {
-		return questionError(c, http.StatusUnauthorized, "Unauthorized")
-	}
-	q, e := qc.queries.GetQuestionForUser(c.Request().Context(), sqlc.GetQuestionForUserParams{ID: qid, ID_2: uid})
-	if errors.Is(e, pgx.ErrNoRows) {
-		return questionError(c, http.StatusNotFound, "Question not found")
-	}
-	if e != nil {
-		return questionError(c, http.StatusInternalServerError, "Failed to load question", e)
-	}
-	if !requireRoundOpened(c, q.Round) {
+	q, ok := visibleQuestion(c, qc.queries, qid)
+	if !ok {
 		return nil
 	}
-	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Question retrieved", questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive)))
+	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Question retrieved", q))
 }
 func (qc *QuestionController) ListBlocks(c echo.Context) error {
 	qid, e := parseQuestionID(c)
 	if e != nil {
 		return questionError(c, http.StatusBadRequest, "Invalid question ID")
 	}
-	uid, e := userID(c)
-	if e != nil {
-		return questionError(c, http.StatusUnauthorized, "Unauthorized")
-	}
-	q, e := qc.queries.GetQuestionForUser(c.Request().Context(), sqlc.GetQuestionForUserParams{ID: qid, ID_2: uid})
-	if e != nil || q.Round != 1 || !strings.EqualFold(q.QType, "visual") {
-		return questionError(c, http.StatusNotFound, "Round 1 visual question not found")
-	}
-	if !requireRoundOpened(c, q.Round) {
+	q, ok := visibleQuestion(c, qc.queries, qid)
+	if !ok {
 		return nil
 	}
-	blocks, e := qc.queries.ListVisualBlocksByQuestionID(c.Request().Context(), qid)
-	if e != nil {
-		return questionError(c, http.StatusInternalServerError, "Failed to load visual blocks")
+	if q.Round != 1 || !strings.EqualFold(q.Type, "visual") {
+		return questionError(c, http.StatusNotFound, "Round 1 visual question not found")
 	}
-	out := make([]dto.VisualBlockResponse, len(blocks))
-	for i, b := range blocks {
-		out[i] = dto.VisualBlockResponse{ID: b.ID, Content: b.Content}
+	out, e := utils.Cached(c.Request().Context(), utils.ContentCachePrefix+"blocks:"+qid.String(), contentTTL, func(ctx context.Context) ([]dto.VisualBlockResponse, error) {
+		blocks, err := qc.queries.ListVisualBlocksByQuestionID(ctx, qid)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]dto.VisualBlockResponse, len(blocks))
+		for i, b := range blocks {
+			out[i] = dto.VisualBlockResponse{ID: b.ID, Content: b.Content}
+		}
+		return out, nil
+	})
+	if e != nil {
+		return questionError(c, http.StatusInternalServerError, "Failed to load visual blocks", e)
 	}
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Visual blocks retrieved", out))
 }
@@ -161,6 +199,7 @@ func (qc *QuestionController) Create(c echo.Context) error {
 	if e != nil {
 		return questionError(c, http.StatusInternalServerError, "Failed to create question")
 	}
+	utils.InvalidateContentCache(c.Request().Context())
 	return c.JSON(201, dto.NewSuccessResponse("Question created", questionFromModel(q)))
 }
 func (qc *QuestionController) Update(c echo.Context) error {
@@ -182,6 +221,7 @@ func (qc *QuestionController) Update(c echo.Context) error {
 	if e != nil {
 		return questionError(c, http.StatusInternalServerError, "Failed to update question")
 	}
+	utils.InvalidateContentCache(c.Request().Context())
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Question updated", questionFromModel(q)))
 }
 func (qc *QuestionController) Delete(c echo.Context) error {
@@ -196,6 +236,7 @@ func (qc *QuestionController) Delete(c echo.Context) error {
 	if e != nil {
 		return questionError(c, http.StatusInternalServerError, "Failed to delete question")
 	}
+	utils.InvalidateContentCache(c.Request().Context())
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Question deleted", nil))
 }
 func (qc *QuestionController) SetBounty(active bool) echo.HandlerFunc {
@@ -211,7 +252,8 @@ func (qc *QuestionController) SetBounty(active bool) echo.HandlerFunc {
 		if e != nil {
 			return questionError(c, http.StatusInternalServerError, "Failed to update bounty")
 		}
-		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Bounty updated", questionFromModel(q)))
+		utils.InvalidateContentCache(c.Request().Context())
+	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Bounty updated", questionFromModel(q)))
 	}
 }
 func questionParams(id uuid.UUID, r dto.QuestionRequest) sqlc.CreateQuestionParams {
