@@ -41,6 +41,11 @@ func main() {
 	utils.InitRedis()
 	defer utils.CloseRedis()
 
+	// Wakes GET /result long-polls when the worker publishes a verdict
+	notifierCtx, stopNotifier := context.WithCancel(context.Background())
+	defer stopNotifier()
+	utils.StartResultNotifier(notifierCtx)
+
 	// Initialize Echo instance
 	e := echo.New()
 
