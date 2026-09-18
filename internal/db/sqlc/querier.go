@@ -32,7 +32,6 @@ type Querier interface {
 	GetBannedUsersCount(ctx context.Context) (int32, error)
 	GetBestScoreForQuestion(ctx context.Context, arg GetBestScoreForQuestionParams) (pgtype.Numeric, error)
 	GetDashboardQuestions(ctx context.Context, id uuid.UUID) ([]GetDashboardQuestionsRow, error)
-	GetDashboardRoundStats(ctx context.Context, id uuid.UUID) ([]GetDashboardRoundStatsRow, error)
 	GetLanguageDistribution(ctx context.Context) ([]GetLanguageDistributionRow, error)
 	GetLeaderboardData(ctx context.Context) ([]GetLeaderboardDataRow, error)
 	GetPublicTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]Testcase, error)
