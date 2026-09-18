@@ -18,6 +18,7 @@ INSERT INTO submission_results (
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8
 )
+ON CONFLICT (id) DO NOTHING
 RETURNING id, testcase_id, submission_id, runtime, memory, points_awarded, status, description
 `
 
