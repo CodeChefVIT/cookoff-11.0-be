@@ -154,8 +154,7 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 
 	// Step 4: this was the last outstanding testcase. Aggregate every
 	// submission_results row into the parent submissions row in a dedicated
-	// final transaction. If the finalize fails, we restore the token we just
-	// deleted so that the Asynq retry can resolve the submission again.
+	// final transaction. 
 	result, err := runFinalize(ctx, submissionID)
 	if err != nil {
 		restoreTokenAfterFailure(ctx, payload.Token, submissionIDStr, testcaseIDStr, submissionID, err)
@@ -181,9 +180,7 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		return dto.ResultResponse{}, fmt.Errorf("get submission for update: %w", err)
 	}
 
-	// Guard: if a previous finalize already committed, don't re-score.
-	// This happens when the commit succeeded but the ack back to Asynq was
-	// lost -- the retry re-enters finalizeSubmission for an already-done row.
+	
 	if submission.Status != nil &&
 		*submission.Status != utils.Judge0InQueue.GetJudge0Status() &&
 		*submission.Status != utils.Judge0Processing.GetJudge0Status() {
@@ -438,9 +435,7 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	return response, nil
 }
 
-// runFinalize opens a dedicated transaction, calls finalizeSubmission, and
-// commits. Extracted so the caller (HandleJudge0CallbackTask) can do the
-// token-restore dance around this single call.
+
 func runFinalize(ctx context.Context, submissionID uuid.UUID) (dto.ResultResponse, error) {
 	finalTx, err := db.DBPool.Begin(ctx)
 	if err != nil {
@@ -460,11 +455,6 @@ func runFinalize(ctx context.Context, submissionID uuid.UUID) (dto.ResultRespons
 	return result, nil
 }
 
-// restoreTokenAfterFailure puts a token back into Redis after the finalize
-// transaction failed, so that Asynq's automatic retry can pick the callback
-// up again instead of leaving the submission stuck "pending" forever.
-// Uses context.WithoutCancel: if the finalize failed because ctx was
-// cancelled (worker shutdown), we still need a live context for the repair.
 func restoreTokenAfterFailure(ctx context.Context, token, submissionIDStr, testcaseIDStr string, submissionID uuid.UUID, cause error) {
 	restoreCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
