@@ -60,6 +60,9 @@ type cfg struct {
 	RateLimitMax    int           `env:"RATE_LIMIT_MAX" envDefault:"15"`
 	RateLimitWindow time.Duration `env:"RATE_LIMIT_WINDOW" envDefault:"1s"`
 
+	// Concurrent synchronous Judge0 calls (Run / custom input) per API process.
+	Judge0WaitSlots int `env:"JUDGE0_WAIT_SLOTS" envDefault:"64"`
+
 	WorkerCount      int   `env:"WORKER_COUNT" envDefault:"10"`
 	PostgresMaxConns int32 `env:"POSTGRES_MAX_CONNS" envDefault:"20"`
 	// Sent as X-Auth-Token on every Judge0 request; must match AUTHN_TOKEN in
