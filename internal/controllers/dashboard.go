@@ -15,6 +15,7 @@ import (
 type dashboardQueries interface {
 	GetUserByID(context.Context, uuid.UUID) (sqlc.User, error)
 	GetDashboardRoundStats(context.Context, uuid.UUID) ([]sqlc.GetDashboardRoundStatsRow, error)
+	GetDashboardQuestions(context.Context, uuid.UUID) ([]sqlc.GetDashboardQuestionsRow, error)
 }
 
 func Dashboard(q dashboardQueries) echo.HandlerFunc {
@@ -43,6 +44,23 @@ func Dashboard(q dashboardQueries) echo.HandlerFunc {
 			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to load dashboard", nil))
 		}
 
+		questionsRows, e := q.GetDashboardQuestions(ctx, id)
+		if e != nil {
+			logging.Errorf("Dashboard error loading questions for user %s: %v", id, e)
+			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to load dashboard", nil))
+		}
+
+		questions := make([]dto.DashboardQuestion, len(questionsRows))
+		for i, qRow := range questionsRows {
+			questions[i] = dto.DashboardQuestion{
+				ID:            qRow.ID,
+				Title:         qRow.Title,
+				Points:        qRow.Points,
+				Round:         qRow.Round,
+				AttemptStatus: qRow.AttemptStatus,
+			}
+		}
+
 		d := dto.DashboardResponse{
 			ID:             u.ID,
 			Name:           u.Name,
@@ -55,6 +73,7 @@ func Dashboard(q dashboardQueries) echo.HandlerFunc {
 				{Round: 2},
 				{Round: 3},
 			},
+			Questions: questions,
 		}
 
 		for i := 0; i < 3; i++ {
