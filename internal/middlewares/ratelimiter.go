@@ -1,7 +1,6 @@
 package middlewares
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -53,7 +52,16 @@ func RateLimiter(cfg RateLimiterConfig) echo.MiddlewareFunc {
 				return next(c)
 			}
 
-			identifier := extractIdentifier(c)
+			claims := accessClaims(c)
+			// Admins are trusted and few; the admin panel's bulk actions send one
+			// request per selected user in parallel and must not be cut off.
+			if claims != nil && strings.EqualFold(claims.Role, "admin") {
+				return next(c)
+			}
+			identifier := "ip:" + c.RealIP()
+			if claims != nil {
+				identifier = "u:" + claims.UserID
+			}
 			if retry, limited := take(c, "rl:"+identifier, cfg.Global); limited {
 				return tooManyRequests(c, retry)
 			}
@@ -94,11 +102,11 @@ func tooManyRequests(c echo.Context, retry time.Duration) error {
 	return c.JSON(http.StatusTooManyRequests, dto.NewCodedError("Too many requests, slow down", dto.CodeRateLimited))
 }
 
-// extractIdentifier returns "u:<userID>" for authenticated requests or
-// "ip:<addr>" for anonymous ones. It reads the JWT directly from the
-// cookie/header without going through VerifyJWTMiddleware, so it works
-// as a global middleware that runs before route-level auth.
-func extractIdentifier(c echo.Context) string {
+// accessClaims reads and verifies the access token from the header or cookie
+// without going through VerifyJWTMiddleware, so it works as a global
+// middleware that runs before route-level auth. It returns nil for anonymous
+// or invalid tokens.
+func accessClaims(c echo.Context) *auth.Claims {
 	var tokenStr string
 	if h := c.Request().Header.Get("Authorization"); h != "" {
 		parts := strings.SplitN(h, " ", 2)
@@ -111,12 +119,14 @@ func extractIdentifier(c echo.Context) string {
 			tokenStr = cookie.Value
 		}
 	}
-	if tokenStr != "" {
-		if claims, err := auth.ParseToken(tokenStr, auth.AccessType); err == nil {
-			return "u:" + claims.UserID
-		}
+	if tokenStr == "" {
+		return nil
 	}
-	return fmt.Sprintf("ip:%s", c.RealIP())
+	claims, err := auth.ParseToken(tokenStr, auth.AccessType)
+	if err != nil {
+		return nil
+	}
+	return claims
 }
 
 // RateLimitSkipper exempts traffic that must never be throttled per IP: CORS

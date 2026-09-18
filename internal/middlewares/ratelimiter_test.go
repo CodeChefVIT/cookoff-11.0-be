@@ -6,8 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/auth"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/alicebob/miniredis/v2"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 )
@@ -121,5 +123,40 @@ func TestClientIPPrefersCloudflare(t *testing.T) {
 	req.Header.Set("CF-Connecting-IP", "203.0.113.9")
 	if got := extract(req); got != "203.0.113.9" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestRateLimiterExemptsAdmins(t *testing.T) {
+	prevSecret := utils.Config.JWTSecret
+	utils.Config.JWTSecret = "test-secret"
+	utils.Config.AccessTokenTTL = time.Hour
+	t.Cleanup(func() { utils.Config.JWTSecret = prevSecret })
+
+	e, _ := newLimitedEcho(t, RateLimiterConfig{Global: Limit{Max: 2, Window: time.Minute}})
+	token := func(role string) string {
+		tok, err := auth.NewAccessToken(auth.User{ID: uuid.NewString(), Email: role + "@test", Role: role})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tok
+	}
+	send := func(tok string) int {
+		req := httptest.NewRequest(http.MethodGet, "/getTime", nil)
+		req.AddCookie(&http.Cookie{Name: auth.AccessCookie, Value: tok})
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	admin := token("admin")
+	for i := 0; i < 30; i++ {
+		if code := send(admin); code != http.StatusOK {
+			t.Fatalf("admin request %d got %d", i, code)
+		}
+	}
+	player := token("user")
+	codes := []int{send(player), send(player), send(player)}
+	if codes[2] != http.StatusTooManyRequests {
+		t.Fatalf("player not limited: %v", codes)
 	}
 }
