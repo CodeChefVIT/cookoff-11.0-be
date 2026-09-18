@@ -153,12 +153,12 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 	}
 
 	// Step 4: this was the last outstanding testcase. Aggregate every
-	// submission_results row into the parent submissions row in a dedicated
-	// final transaction.
+	// submission_results row into the parent submissions row.
+	// Pre-fetches read-only data outside the FOR UPDATE lock via runFinalize.
 	result, err := runFinalize(ctx, submissionID)
 	if err != nil {
 		restoreTokenAfterFailure(ctx, payload.Token, submissionIDStr, testcaseIDStr, submissionID, err)
-		return err
+		return fmt.Errorf("finalize submission: %w", err)
 	}
 
 	// CHANGE #2: cache the finished result in Redis, only after the commit
@@ -180,7 +180,7 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 // finalizeSubmission runs once per submission, exactly when the last
 // testcase's callback arrives. It now returns the built dto.ResultResponse
 // alongside the error, so the caller can cache it in Redis after commit.
-func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uuid.UUID) (dto.ResultResponse, error) {
+func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uuid.UUID, question sqlc.GetQuestionByIDRow, testcases []sqlc.Testcase) (dto.ResultResponse, error) {
 	submission, err := qtx.GetSubmissionForUpdate(ctx, submissionID)
 	if err != nil {
 		return dto.ResultResponse{}, fmt.Errorf("get submission for update: %w", err)
@@ -202,10 +202,6 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		return dto.ResultResponse{}, fmt.Errorf("no submission results found for submission %s", submissionID)
 	}
 
-	testcases, err := qtx.GetAllTestCasesByQuestion(ctx, submission.QuestionID)
-	if err != nil {
-		return dto.ResultResponse{}, fmt.Errorf("get testcases for question: %w", err)
-	}
 	if len(results) != len(testcases) {
 		return dto.ResultResponse{}, fmt.Errorf("incomplete results for submission %s: got %d, expected %d",
 			submissionID, len(results), len(testcases))
@@ -300,11 +296,6 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		SubmissionTime: submission.SubmissionTime.Time.String(),
 		Description:    overallDesc,
 		Testcases:      testcaseResults,
-	}
-
-	question, err := qtx.GetQuestionByID(ctx, submission.QuestionID)
-	if err != nil {
-		return dto.ResultResponse{}, fmt.Errorf("get question: %w", err)
 	}
 
 	// Calculate total testcases and compute partial score safely (avoid division by zero NaN)
@@ -441,13 +432,29 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 }
 
 func runFinalize(ctx context.Context, submissionID uuid.UUID) (dto.ResultResponse, error) {
+	// Pre-fetch read-only data outside the locking transaction
+	sub, err := db.Queries.GetSubmissionByID(ctx, submissionID)
+	if err != nil {
+		return dto.ResultResponse{}, fmt.Errorf("get submission for pre-fetch: %w", err)
+	}
+
+	question, err := db.Queries.GetQuestionByID(ctx, sub.QuestionID)
+	if err != nil {
+		return dto.ResultResponse{}, fmt.Errorf("get question: %w", err)
+	}
+
+	testcases, err := db.Queries.GetAllTestCasesByQuestion(ctx, sub.QuestionID)
+	if err != nil {
+		return dto.ResultResponse{}, fmt.Errorf("get testcases: %w", err)
+	}
+
 	finalTx, err := db.DBPool.Begin(ctx)
 	if err != nil {
 		return dto.ResultResponse{}, fmt.Errorf("begin final tx: %w", err)
 	}
 	defer func() { _ = finalTx.Rollback(ctx) }()
 
-	result, err := finalizeSubmission(ctx, db.Queries.WithTx(finalTx), submissionID)
+	result, err := finalizeSubmission(ctx, db.Queries.WithTx(finalTx), submissionID, question, testcases)
 	if err != nil {
 		return dto.ResultResponse{}, fmt.Errorf("finalize submission: %w", err)
 	}
