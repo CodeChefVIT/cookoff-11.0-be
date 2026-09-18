@@ -62,6 +62,9 @@ type cfg struct {
 
 	WorkerCount      int   `env:"WORKER_COUNT" envDefault:"10"`
 	PostgresMaxConns int32 `env:"POSTGRES_MAX_CONNS" envDefault:"20"`
+	// Sent as X-Auth-Token on every Judge0 request; must match AUTHN_TOKEN in
+	// judge0.conf. Leave unset when the instance has authentication disabled.
+	Judge0AuthToken string `env:"JUDGE0_AUTH_TOKEN"`
 }
 
 var Config cfg

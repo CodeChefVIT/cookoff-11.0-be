@@ -131,7 +131,7 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 		PointsAwarded: pointsAwarded,
 		Status:        status,
 		Description:   &description,
-	}); createErr != nil {
+	}); createErr != nil && !errors.Is(createErr, pgx.ErrNoRows) {
 		_ = tx.Rollback(ctx)
 		return fmt.Errorf("create submission result: %w", createErr)
 	}
@@ -168,6 +168,12 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 		// a Postgres fallback if this is missing.
 		logging.Warnf("submission %s: failed to cache result: %v", submissionID, cacheErr)
 	}
+
+	// Wake any GET /result long-poll holding for this verdict. Missing it only
+	// delays the reply to GetResult's fallback DB check.
+	if pubErr := utils.PublishSubmissionDone(ctx, submissionID.String()); pubErr != nil {
+		logging.Warnf("submission %s: failed to publish completion: %v", submissionID, pubErr)
+	}
 	return nil
 }
 
@@ -178,6 +184,14 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	submission, err := qtx.GetSubmissionForUpdate(ctx, submissionID)
 	if err != nil {
 		return dto.ResultResponse{}, fmt.Errorf("get submission for update: %w", err)
+	}
+
+	if submission.Status != nil &&
+		*submission.Status != utils.Judge0InQueue.GetJudge0Status() &&
+		*submission.Status != utils.Judge0Processing.GetJudge0Status() {
+		logging.Infof("submission %s: already finalized with status %q -- skipping",
+			submissionID, *submission.Status)
+		return dto.ResultResponse{}, nil
 	}
 
 	results, err := qtx.GetSubmissionResults(ctx, submissionID)

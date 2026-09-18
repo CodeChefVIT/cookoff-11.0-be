@@ -8,8 +8,6 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/time/rate"
-
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
@@ -41,6 +39,11 @@ func main() {
 	utils.InitRedis()
 	defer utils.CloseRedis()
 
+	// Wakes GET /result long-polls when the worker publishes a verdict
+	notifierCtx, stopNotifier := context.WithCancel(context.Background())
+	defer stopNotifier()
+	utils.StartResultNotifier(notifierCtx)
+
 	// Initialize Echo instance
 	e := echo.New()
 
@@ -55,7 +58,14 @@ func main() {
 	e.Use(emiddleware.Recover())
 	e.Use(middlewares.Logger)
 	e.Use(emiddleware.Secure())
-	e.Use(emiddleware.RateLimiter(emiddleware.NewRateLimiterMemoryStore(rate.Limit(20))))
+	e.Use(middlewares.RateLimiter(middlewares.RateLimiterConfig{
+		Max:    utils.Config.RateLimitMax,
+		Window: utils.Config.RateLimitWindow,
+		Skipper: func(c echo.Context) bool {
+			p := c.Path()
+			return p == "/judge0callback" || p == "/health"
+		},
+	}))
 	e.Use(emiddleware.BodyLimit("10M"))
 
 	// Configure CORS

@@ -24,6 +24,9 @@ func main() {
 	db.InitDB()
 	defer db.CloseDB()
 
+	utils.InitRedis()
+	defer utils.CloseRedis()
+
 	utils.InitTokenCache()
 	defer utils.CloseTokenCache()
 
