@@ -59,6 +59,9 @@ type cfg struct {
 
 	RateLimitMax    int           `env:"RATE_LIMIT_MAX" envDefault:"15"`
 	RateLimitWindow time.Duration `env:"RATE_LIMIT_WINDOW" envDefault:"1s"`
+	// Sent as X-Auth-Token on every Judge0 request; must match AUTHN_TOKEN in
+	// judge0.conf. Leave unset when the instance has authentication disabled.
+	Judge0AuthToken string `env:"JUDGE0_AUTH_TOKEN"`
 }
 
 var Config cfg

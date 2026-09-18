@@ -55,9 +55,22 @@ func GetResult(c echo.Context) error {
 	// also the only option that survives the per-IP rate limiter
 	// (cmd/api/main.go) when a whole hall shares one NAT address; a
 	// client-side poll would multiply request volume by the number of players.
+	//
+	// The worker publishes on Redis once the verdict is committed, so a held
+	// request wakes immediately instead of re-reading Postgres on a tight
+	// timer. The slow fallback tick only covers a missed notification.
+
+	// The server-wide WriteTimeout (15s) would cut the connection long before
+	// the 120s long-poll deadline, so extend it for this request only.
+	_ = http.NewResponseController(c.Response()).SetWriteDeadline(time.Now().Add(resultLongPollTimeout + 10*time.Second))
+
+	// Register before the first check so a verdict landing in between is not missed.
+	done, stopWaiting := utils.WaitForResult(submissionID.String())
+	defer stopWaiting()
+
 	deadline := time.After(resultLongPollTimeout)
-	ticker := time.NewTicker(resultPollInterval)
-	defer ticker.Stop()
+	fallback := time.NewTicker(resultFallbackInterval)
+	defer fallback.Stop()
 
 	for {
 		var result dto.ResultResponse
@@ -80,7 +93,8 @@ func GetResult(c echo.Context) error {
 		case <-deadline:
 			// The portal maps 408 to its "Check again" affordance.
 			return c.JSON(http.StatusRequestTimeout, dto.NewErrorResponse("Submission is still being judged", nil))
-		case <-ticker.C:
+		case <-done:
+		case <-fallback.C:
 		}
 
 		submission, err = db.Queries.GetSubmissionByID(ctx, submissionID)
@@ -96,7 +110,9 @@ func GetResult(c echo.Context) error {
 const (
 	// Comfortably inside the portal's 130s axios timeout (api/submissions.ts).
 	resultLongPollTimeout = 120 * time.Second
-	resultPollInterval    = 500 * time.Millisecond
+	// Safety net for a lost pub/sub message (e.g. across a Redis reconnect);
+	// the normal wake-up is the worker's publish.
+	resultFallbackInterval = 5 * time.Second
 )
 
 // isPendingStatus reports whether the judge is still working on a submission.

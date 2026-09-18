@@ -168,6 +168,12 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 		// a Postgres fallback if this is missing.
 		logging.Warnf("submission %s: failed to cache result: %v", submissionID, cacheErr)
 	}
+
+	// Wake any GET /result long-poll holding for this verdict. Missing it only
+	// delays the reply to GetResult's fallback DB check.
+	if pubErr := utils.PublishSubmissionDone(ctx, submissionID.String()); pubErr != nil {
+		logging.Warnf("submission %s: failed to publish completion: %v", submissionID, pubErr)
+	}
 	return nil
 }
 

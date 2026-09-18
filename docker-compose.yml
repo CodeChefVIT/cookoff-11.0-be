@@ -25,7 +25,7 @@ services:
     restart: unless-stopped
     ports:
       - "${REDIS_HOST_PORT:-6379}:6379"
-    command: redis-server ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}
+    command: redis-server --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     healthcheck:
@@ -74,7 +74,7 @@ services:
     container_name: cookoff_11_api
     restart: unless-stopped
     ports:
-      - "${PORT:-8080}:${PORT:-8080}"
+    - "127.0.0.1:8080:8080"
     environment:
       - ENV=production
       - PORT=${PORT:-8080}
@@ -108,6 +108,7 @@ services:
       - CALLBACK_URL=${CALLBACK_URL:-}
       - JUDGE0_URI=${JUDGE0_URI:-}
       - JUDGE0_CALLBACK_SECRET=${JUDGE0_CALLBACK_SECRET:-}
+      - JUDGE0_AUTH_TOKEN=${JUDGE0_AUTH_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -156,6 +157,7 @@ services:
       - CALLBACK_URL=${CALLBACK_URL:-}
       - JUDGE0_URI=${JUDGE0_URI:-}
       - JUDGE0_CALLBACK_SECRET=${JUDGE0_CALLBACK_SECRET:-}
+      - JUDGE0_AUTH_TOKEN=${JUDGE0_AUTH_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy

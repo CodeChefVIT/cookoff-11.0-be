@@ -112,6 +112,9 @@ func SendBatchSubmissionPayload(client *http.Client, payload []byte) (*http.Resp
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	if token := utils.Config.Judge0AuthToken; token != "" {
+		req.Header.Set("X-Auth-Token", token)
+	}
 
 	resp, err := client.Do(req)
 
@@ -142,6 +145,9 @@ func SendSubmissionPayloadWithWait(client *http.Client, payload []byte) (*http.R
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	if token := utils.Config.Judge0AuthToken; token != "" {
+		req.Header.Set("X-Auth-Token", token)
+	}
 
 	resp, err := client.Do(req)
 
