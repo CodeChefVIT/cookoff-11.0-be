@@ -147,6 +147,70 @@ func (q *Queries) GetQuestionForUser(ctx context.Context, arg GetQuestionForUser
 	return i, err
 }
 
+const listAllQuestions = `-- name: ListAllQuestions :many
+SELECT id, description, title, q_type, input_format,
+       COALESCE(buy_in::text, ''::text) AS buy_in,
+       COALESCE(reward::text, ''::text) AS reward, points, round,
+       constraints, output_format, sample_test_input, sample_test_output,
+       explanation, bounty_active
+FROM questions
+ORDER BY title ASC, id ASC
+`
+
+type ListAllQuestionsRow struct {
+	ID               uuid.UUID
+	Description      string
+	Title            string
+	QType            string
+	InputFormat      []string
+	BuyIn            interface{}
+	Reward           interface{}
+	Points           int32
+	Round            int32
+	Constraints      []string
+	OutputFormat     []string
+	SampleTestInput  []string
+	SampleTestOutput []string
+	Explanation      []string
+	BountyActive     bool
+}
+
+func (q *Queries) ListAllQuestions(ctx context.Context) ([]ListAllQuestionsRow, error) {
+	rows, err := q.db.Query(ctx, listAllQuestions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllQuestionsRow
+	for rows.Next() {
+		var i ListAllQuestionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Description,
+			&i.Title,
+			&i.QType,
+			&i.InputFormat,
+			&i.BuyIn,
+			&i.Reward,
+			&i.Points,
+			&i.Round,
+			&i.Constraints,
+			&i.OutputFormat,
+			&i.SampleTestInput,
+			&i.SampleTestOutput,
+			&i.Explanation,
+			&i.BountyActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listQuestionsForUser = `-- name: ListQuestionsForUser :many
 SELECT q.id, q.description, q.title, q.q_type, q.input_format,
        COALESCE(q.buy_in::text, ''::text) AS buy_in,

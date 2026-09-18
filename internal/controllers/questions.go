@@ -21,6 +21,8 @@ import (
 type questionQueries interface {
 	ListQuestionsForUser(context.Context, uuid.UUID) ([]sqlc.ListQuestionsForUserRow, error)
 	GetQuestionForUser(context.Context, sqlc.GetQuestionForUserParams) (sqlc.GetQuestionForUserRow, error)
+	GetQuestionByID(context.Context, uuid.UUID) (sqlc.GetQuestionByIDRow, error)
+	ListAllQuestions(context.Context) ([]sqlc.ListAllQuestionsRow, error)
 	ListVisualBlocksByQuestionID(context.Context, uuid.UUID) ([]sqlc.VisualBlock, error)
 	CreateQuestion(context.Context, sqlc.CreateQuestionParams) (sqlc.Question, error)
 	UpdateQuestion(context.Context, sqlc.UpdateQuestionParams) (sqlc.Question, error)
@@ -67,6 +69,18 @@ func (qc *QuestionController) ListByRound(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Questions retrieved", out))
 }
+func (qc *QuestionController) ListAll(c echo.Context) error {
+	rows, e := qc.queries.ListAllQuestions(c.Request().Context())
+	if e != nil {
+		return questionError(c, http.StatusInternalServerError, "Failed to load questions")
+	}
+	out := make([]dto.QuestionResponse, len(rows))
+	for i, q := range rows {
+		out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive)
+	}
+	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Questions retrieved", out))
+}
+
 func (qc *QuestionController) GetByID(c echo.Context) error {
 	qid, e := parseQuestionID(c)
 	if e != nil {
@@ -75,6 +89,18 @@ func (qc *QuestionController) GetByID(c echo.Context) error {
 	uid, e := userID(c)
 	if e != nil {
 		return questionError(c, http.StatusUnauthorized, "Unauthorized")
+	}
+	// Admins bypass the round_qualified filter so they can edit any question.
+	role, _ := c.Get(middlewares.RoleKey).(string)
+	if strings.EqualFold(role, "admin") {
+		q, e := qc.queries.GetQuestionByID(c.Request().Context(), qid)
+		if errors.Is(e, pgx.ErrNoRows) {
+			return questionError(c, http.StatusNotFound, "Question not found")
+		}
+		if e != nil {
+			return questionError(c, http.StatusInternalServerError, "Failed to load question")
+		}
+		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Question retrieved", questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive)))
 	}
 	q, e := qc.queries.GetQuestionForUser(c.Request().Context(), sqlc.GetQuestionForUserParams{ID: qid, ID_2: uid})
 	if errors.Is(e, pgx.ErrNoRows) {
