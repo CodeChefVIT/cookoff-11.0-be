@@ -18,6 +18,11 @@ type UpgradeUserRequest struct {
 	Role           *string `json:"role"`
 }
 
+type UpgradeAllUsersRequest struct {
+	TargetRound *int32 `json:"target_round"`
+	Round       *int32 `json:"round"`
+}
+
 type UserSubmissionResponse struct {
 	ID              string  `json:"id"`
 	QuestionID      string  `json:"question_id"`

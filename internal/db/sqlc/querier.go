@@ -29,9 +29,9 @@ type Querier interface {
 	GetAttempt(ctx context.Context, arg GetAttemptParams) (Attempt, error)
 	GetAttemptForUpdate(ctx context.Context, arg GetAttemptForUpdateParams) (Attempt, error)
 	GetBannedUsersCount(ctx context.Context) (int32, error)
+	GetBestScoreForQuestion(ctx context.Context, arg GetBestScoreForQuestionParams) (pgtype.Numeric, error)
 	GetLanguageDistribution(ctx context.Context) ([]GetLanguageDistributionRow, error)
 	GetLeaderboardData(ctx context.Context) ([]GetLeaderboardDataRow, error)
-	GetBestScoreForQuestion(ctx context.Context, arg GetBestScoreForQuestionParams) (pgtype.Numeric, error)
 	GetPublicTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]Testcase, error)
 	GetQuestionBuyIn(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
 	GetQuestionByID(ctx context.Context, id uuid.UUID) (GetQuestionByIDRow, error)
@@ -69,6 +69,7 @@ type Querier interface {
 	UpdateUserBalance(ctx context.Context, arg UpdateUserBalanceParams) error
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) (User, error)
 	UpdateUserScore(ctx context.Context, arg UpdateUserScoreParams) error
+	UpgradeAllUsersRound(ctx context.Context, roundQualified int32) (int64, error)
 	UpgradeUserRound(ctx context.Context, arg UpgradeUserRoundParams) (User, error)
 }
 

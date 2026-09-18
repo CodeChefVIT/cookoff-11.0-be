@@ -21,6 +21,11 @@ SET round_qualified = $2
 WHERE id = $1
 RETURNING id, email, reg_no, role, round_qualified, google_id, balance, score, name, is_banned;
 
+-- name: UpgradeAllUsersRound :execrows
+UPDATE users
+SET round_qualified = $1
+WHERE is_banned = false AND round_qualified < $1;
+
 -- name: IncrementUserRound :one
 UPDATE users
 SET round_qualified = round_qualified + 1

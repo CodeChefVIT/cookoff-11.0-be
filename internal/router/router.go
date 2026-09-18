@@ -71,6 +71,7 @@ func RegisterRoutes(e *echo.Echo) {
 	adminRoutes.POST("/users/:id/ban", adminController.BanUser)
 	adminRoutes.POST("/users/:id/unban", adminController.UnbanUser)
 	adminRoutes.POST("/users/:id/upgrade", adminController.UpgradeUser)
+	adminRoutes.POST("/users/upgrade-all", adminController.UpgradeAllUsers)
 	adminRoutes.GET("/users/:id/submissions", adminController.GetUserSubmissions)
 	adminRoutes.GET("/leaderboard", adminController.GetLeaderboard)
 	adminRoutes.GET("/analytics", adminController.GetAnalytics)
