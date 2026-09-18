@@ -279,10 +279,14 @@ func GetTime(ctx context.Context) (dto.TimerResponse, error) {
 		memMu.RUnlock()
 
 		if !isRunning {
+			// Same reasoning as the Redis path: a stopped round keeps its window
+			// so "ended" stays distinguishable from "not started".
 			return dto.TimerResponse{
 				Round:     round,
 				IsRunning: false,
 				Duration:  duration,
+				StartTime: optionalTime(startStr),
+				EndTime:   optionalTime(endStr),
 				TimeLeft:  0,
 			}, nil
 		}
@@ -356,17 +360,24 @@ func GetTime(ctx context.Context) (dto.TimerResponse, error) {
 	}
 	isRunning := isRunningVal == "true"
 
+	startStr, _ := utils.RedisClient.Get(ctx, KeyStartTime).Result()
+	endStr, err := utils.RedisClient.Get(ctx, KeyEndTime).Result()
+
 	if !isRunning {
+		// Keep whatever window Redis still holds. A stopped round *with* an end
+		// time has finished; one *without* has not started — dropping the times
+		// here made those two states indistinguishable to the portal, which
+		// then showed "begins shortly" for a round that had just closed.
+		// SetTime/ResetRound delete both keys, so "not started" stays correct.
 		return dto.TimerResponse{
 			Round:     round,
 			IsRunning: false,
 			Duration:  duration,
+			StartTime: optionalTime(startStr),
+			EndTime:   optionalTime(endStr),
 			TimeLeft:  0,
 		}, nil
 	}
-
-	startStr, _ := utils.RedisClient.Get(ctx, KeyStartTime).Result()
-	endStr, err := utils.RedisClient.Get(ctx, KeyEndTime).Result()
 
 	now := time.Now().UTC()
 	var endT time.Time
@@ -426,6 +437,15 @@ func GetTime(ctx context.Context) (dto.TimerResponse, error) {
 		EndTime:   &endStr,
 		TimeLeft:  remaining,
 	}, nil
+}
+
+// optionalTime returns nil for an unset timestamp so the JSON carries `null`
+// rather than an empty string the portal would try to parse as a date.
+func optionalTime(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 // ErrRoundNotRunning means the contest timer is stopped or running a different round.

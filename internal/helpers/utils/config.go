@@ -49,7 +49,13 @@ type cfg struct {
 	RedisPassword     string `env:"REDIS_PASSWORD"`
 
 	CallbackURL string `env:"CALLBACK_URL"`
-	Judge0URI   string `env:"JUDGE0_URI"`
+	// Shared secret appended to the Judge0 callback URL and required back on
+	// PUT /judge0callback. That route cannot use the JWT middleware (Judge0 is
+	// not a logged-in user), so without this anyone who guesses a submission
+	// token can post a verdict. Optional: leave unset and the callback stays
+	// open, exactly as before.
+	Judge0CallbackSecret string `env:"JUDGE0_CALLBACK_SECRET"`
+	Judge0URI            string `env:"JUDGE0_URI"`
 }
 
 var Config cfg
