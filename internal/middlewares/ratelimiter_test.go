@@ -142,7 +142,7 @@ func TestRateLimiterExemptsAdmins(t *testing.T) {
 	}
 	send := func(tok string) int {
 		req := httptest.NewRequest(http.MethodGet, "/getTime", nil)
-		req.AddCookie(&http.Cookie{Name: auth.AccessCookie, Value: tok})
+		req.Header.Set("Cookie", auth.AccessCookie+"="+tok)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 		return rec.Code
