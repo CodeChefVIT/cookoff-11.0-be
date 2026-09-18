@@ -108,6 +108,7 @@ services:
       - CALLBACK_URL=${CALLBACK_URL:-}
       - JUDGE0_URI=${JUDGE0_URI:-}
       - JUDGE0_CALLBACK_SECRET=${JUDGE0_CALLBACK_SECRET:-}
+      - JUDGE0_AUTH_TOKEN=${JUDGE0_AUTH_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -156,6 +157,7 @@ services:
       - CALLBACK_URL=${CALLBACK_URL:-}
       - JUDGE0_URI=${JUDGE0_URI:-}
       - JUDGE0_CALLBACK_SECRET=${JUDGE0_CALLBACK_SECRET:-}
+      - JUDGE0_AUTH_TOKEN=${JUDGE0_AUTH_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
