@@ -87,6 +87,22 @@ make dev-down
 
 ---
 
+### Deploying
+
+- **CORS and cookies:** `FRONTEND_URL` and `ADMIN_URL` must be the exact origins of the portal and admin panel (scheme, host, no path); only those origins can call the API. Keep both on a `codechefvit.com` subdomain so the session cookies are same-site; `COOKIE_DOMAIN` can stay unset.
+- **Reverse proxy:** `GET /result/:id` holds the request for up to 90s while a verdict is judged, and `/runcode` / `/runcustom` for up to 45s. Nginx's default `proxy_read_timeout` (60s) cuts `/result` short, so set it to at least 100s and turn buffering off for it:
+
+  ```nginx
+  location /result/ {
+      proxy_pass http://127.0.0.1:8080;
+      proxy_read_timeout 100s;
+      proxy_buffering off;
+  }
+  ```
+
+  Forward the client address (`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`); behind Cloudflare the API uses `CF-Connecting-IP`.
+- **Tuning:** `RATE_LIMIT_MAX`/`RATE_LIMIT_WINDOW` (per player, all routes), `JUDGE0_WAIT_SLOTS` (concurrent synchronous Judge0 calls; size it to the Judge0 worker count), `WORKER_COUNT` and `POSTGRES_MAX_CONNS`. See `.env.example`.
+
 ## Interactive Documentation
 
 Once the backend is running, navigate to:

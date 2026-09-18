@@ -55,7 +55,7 @@ func GetResult(c echo.Context) error {
 	// timer. The slow fallback tick only covers a missed notification.
 
 	// The server-wide WriteTimeout (15s) would cut the connection long before
-	// the 120s long-poll deadline, so extend it for this request only.
+	// the long-poll deadline, so extend it for this request only.
 	_ = http.NewResponseController(c.Response()).SetWriteDeadline(time.Now().Add(resultLongPollTimeout + 10*time.Second))
 
 	// Register before the first check so a verdict landing in between is not missed.
@@ -102,8 +102,10 @@ func GetResult(c echo.Context) error {
 }
 
 const (
-	// Comfortably inside the portal's 130s axios timeout (api/submissions.ts).
-	resultLongPollTimeout = 120 * time.Second
+	// Under Cloudflare's 100s proxy timeout (a longer hold turns into a 524
+	// the portal cannot read) and the portal's 100s axios timeout
+	// (api/submissions.ts). Nginx in front needs proxy_read_timeout >= 100s.
+	resultLongPollTimeout = 90 * time.Second
 	// Safety net for a lost pub/sub message (e.g. across a Redis reconnect);
 	// the normal wake-up is the worker's publish.
 	resultFallbackInterval = 5 * time.Second
