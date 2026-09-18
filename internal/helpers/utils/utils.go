@@ -15,3 +15,9 @@ func GetExecutionTimeMultiplier(languageID int) float64 {
 	}
 
 }
+
+// IsSupportedLanguage reports whether languageID is a Judge0 language this
+// contest runs.
+func IsSupportedLanguage(languageID int) bool {
+	return GetExecutionTimeMultiplier(languageID) != 0
+}

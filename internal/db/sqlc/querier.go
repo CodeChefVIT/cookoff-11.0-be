@@ -21,6 +21,7 @@ type Querier interface {
 	CreateTestCase(ctx context.Context, arg CreateTestCaseParams) (Testcase, error)
 	CreateVisualSubmission(ctx context.Context, arg CreateVisualSubmissionParams) (Submission, error)
 	DeleteQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	DeleteSubmission(ctx context.Context, id uuid.UUID) error
 	DeleteTestCase(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	EnsureAttempt(ctx context.Context, arg EnsureAttemptParams) error
 	GetActiveUsersCount(ctx context.Context) (int32, error)
