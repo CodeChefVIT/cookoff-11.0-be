@@ -8,8 +8,6 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/time/rate"
-
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
@@ -55,8 +53,9 @@ func main() {
 	e.Use(emiddleware.Recover())
 	e.Use(middlewares.Logger)
 	e.Use(emiddleware.Secure())
-	e.Use(emiddleware.RateLimiterWithConfig(emiddleware.RateLimiterConfig{
-		Store: emiddleware.NewRateLimiterMemoryStore(rate.Limit(50)),
+	e.Use(middlewares.RateLimiter(middlewares.RateLimiterConfig{
+		Max:    utils.Config.RateLimitMax,
+		Window: utils.Config.RateLimitWindow,
 		Skipper: func(c echo.Context) bool {
 			p := c.Path()
 			return p == "/judge0callback" || p == "/health"
