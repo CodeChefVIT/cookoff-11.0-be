@@ -9,7 +9,49 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const createUserFromGoogle = `-- name: CreateUserFromGoogle :one
+INSERT INTO users (id, email, reg_no, role, name, google_id, balance)
+VALUES ($1, $2, $3, 'user', $4, $5, $6)
+ON CONFLICT DO NOTHING
+RETURNING id, email, reg_no, role, round_qualified, google_id, balance, score, name, is_banned
+`
+
+type CreateUserFromGoogleParams struct {
+	ID       uuid.UUID
+	Email    string
+	RegNo    string
+	Name     string
+	GoogleID *string
+	Balance  pgtype.Numeric
+}
+
+func (q *Queries) CreateUserFromGoogle(ctx context.Context, arg CreateUserFromGoogleParams) (User, error) {
+	row := q.db.QueryRow(ctx, createUserFromGoogle,
+		arg.ID,
+		arg.Email,
+		arg.RegNo,
+		arg.Name,
+		arg.GoogleID,
+		arg.Balance,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.RegNo,
+		&i.Role,
+		&i.RoundQualified,
+		&i.GoogleID,
+		&i.Balance,
+		&i.Score,
+		&i.Name,
+		&i.IsBanned,
+	)
+	return i, err
+}
 
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, email, reg_no, role, round_qualified, google_id, balance, score, name, is_banned FROM users WHERE email = $1

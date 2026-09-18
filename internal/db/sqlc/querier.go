@@ -18,6 +18,7 @@ type Querier interface {
 	CreateSubmission(ctx context.Context, arg CreateSubmissionParams) error
 	CreateSubmissionResult(ctx context.Context, arg CreateSubmissionResultParams) (SubmissionResult, error)
 	CreateTestCase(ctx context.Context, arg CreateTestCaseParams) (Testcase, error)
+	CreateUserFromGoogle(ctx context.Context, arg CreateUserFromGoogleParams) (User, error)
 	CreateVisualSubmission(ctx context.Context, arg CreateVisualSubmissionParams) (Submission, error)
 	DeleteQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	DeleteSubmission(ctx context.Context, id uuid.UUID) error

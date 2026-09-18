@@ -210,6 +210,9 @@ func (ac *AuthController) findUser(ctx context.Context, identity googleIdentity)
 	// No account claimed by this Google identity yet: check for a
 	// pre-seeded account matching the verified email and link it.
 	user, err = ac.queries.GetUserByEmail(ctx, identity.Email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ac.createUser(ctx, identity)
+	}
 	if err != nil {
 		return sqlc.User{}, err
 	}
@@ -218,6 +221,40 @@ func (ac *AuthController) findUser(ctx context.Context, identity googleIdentity)
 		return sqlc.User{}, err
 	}
 	return linked, nil
+}
+
+// newUserBalance is the starting balance of an account created on first login.
+const newUserBalance = 2000
+
+// createUser registers a first-time Google sign-in that has no seeded
+// account. The email doubles as the reg no until an organiser sets it. Two
+// racing first logins insert once; the loser reads the winner's row.
+func (ac *AuthController) createUser(ctx context.Context, identity googleIdentity) (sqlc.User, error) {
+	balance, err := utils.Float64ToNumeric(newUserBalance)
+	if err != nil {
+		return sqlc.User{}, err
+	}
+	name := strings.TrimSpace(identity.Name)
+	if name == "" {
+		name, _, _ = strings.Cut(identity.Email, "@")
+	}
+	googleID := identity.Subject
+	user, err := ac.queries.CreateUserFromGoogle(ctx, sqlc.CreateUserFromGoogleParams{
+		ID:       uuid.New(),
+		Email:    identity.Email,
+		RegNo:    identity.Email,
+		Name:     name,
+		GoogleID: &googleID,
+		Balance:  balance,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ac.queries.GetUserByGoogleID(ctx, &googleID)
+	}
+	if err != nil {
+		return sqlc.User{}, err
+	}
+	logging.Infof("Created user %s on first login", user.ID)
+	return user, nil
 }
 
 // loginFailed sends the browser back to the portal's login page with a
