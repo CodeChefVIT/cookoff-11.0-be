@@ -14,7 +14,6 @@ import (
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
 )
 
 func GetResult(c echo.Context) error {
@@ -22,29 +21,24 @@ func GetResult(c echo.Context) error {
 
 	submissionID, err := uuid.Parse(c.Param("submission_id"))
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
+		return c.JSON(http.StatusBadRequest, dto.NewCodedError("Invalid submission ID", dto.CodeValidation))
 	}
 
 	submission, err := db.Queries.GetSubmissionByID(ctx, submissionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return c.JSON(http.StatusNotFound, dto.NewErrorResponse("Submission not found", nil))
+			return c.JSON(http.StatusNotFound, dto.NewCodedError("Submission not found", dto.CodeNotFound))
 		}
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to get submission from database", nil))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to get submission", dto.CodeInternal))
 	}
 
-	userIDStr, ok := c.Get(middlewares.UserIDKey).(string)
-	if !ok || userIDStr == "" {
-		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Unauthorized", nil))
-	}
-
-	userID, err := uuid.Parse(userIDStr)
+	uid, err := userID(c)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Invalid user id", nil))
+		return c.JSON(http.StatusUnauthorized, dto.NewCodedError("Unauthorized", dto.CodeUnauthorized))
 	}
 
-	if userID != submission.UserID {
-		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Submission not owned by user", nil))
+	if uid != submission.UserID {
+		return c.JSON(http.StatusForbidden, dto.NewCodedError("Submission not owned by user", dto.CodeForbidden))
 	}
 
 	// Long-poll until the verdict is terminal. The portal issues exactly one
@@ -81,7 +75,7 @@ func GetResult(c echo.Context) error {
 		if !isPendingStatus(submission.Status) {
 			res, resErr := getSubmissionResult(ctx, submission)
 			if resErr != nil {
-				return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch submission result", nil))
+				return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to fetch submission result", dto.CodeInternal))
 			}
 			return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", res))
 		}
@@ -92,7 +86,7 @@ func GetResult(c echo.Context) error {
 			return nil
 		case <-deadline:
 			// The portal maps 408 to its "Check again" affordance.
-			return c.JSON(http.StatusRequestTimeout, dto.NewErrorResponse("Submission is still being judged", nil))
+			return c.JSON(http.StatusRequestTimeout, dto.NewCodedError("Submission is still being judged", "STILL_JUDGING"))
 		case <-done:
 		case <-fallback.C:
 		}
@@ -100,9 +94,9 @@ func GetResult(c echo.Context) error {
 		submission, err = db.Queries.GetSubmissionByID(ctx, submissionID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				return c.JSON(http.StatusNotFound, dto.NewErrorResponse("Submission not found", nil))
+				return c.JSON(http.StatusNotFound, dto.NewCodedError("Submission not found", dto.CodeNotFound))
 			}
-			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to get submission from database", nil))
+			return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to get submission", dto.CodeInternal))
 		}
 	}
 }

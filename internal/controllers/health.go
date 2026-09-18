@@ -68,5 +68,8 @@ func HealthCheck(c echo.Context) error {
 		"redis":    redisStatus,
 	}
 
+	if status != http.StatusOK {
+		return c.JSON(status, dto.ErrorResponse{Success: false, Message: "Health check failed", Code: dto.CodeInternal, Errors: healthInfo})
+	}
 	return c.JSON(status, dto.NewSuccessResponse("Health check completed", healthInfo))
 }
