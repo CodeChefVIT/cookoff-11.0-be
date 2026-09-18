@@ -131,7 +131,7 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 		PointsAwarded: pointsAwarded,
 		Status:        status,
 		Description:   &description,
-	}); createErr != nil {
+	}); createErr != nil && !errors.Is(createErr, pgx.ErrNoRows) {
 		_ = tx.Rollback(ctx)
 		return fmt.Errorf("create submission result: %w", createErr)
 	}
@@ -153,23 +153,13 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 	}
 
 	// Step 4: this was the last outstanding testcase. Aggregate every
-	// submission_results row into the parent submissions row in a dedicated final transaction.
-	finalTx, err := db.DBPool.Begin(ctx)
+	// submission_results row into the parent submissions row in a dedicated
+	// final transaction. If the finalize fails, we restore the token we just
+	// deleted so that the Asynq retry can resolve the submission again.
+	result, err := runFinalize(ctx, submissionID)
 	if err != nil {
-		return fmt.Errorf("begin final tx: %w", err)
-	}
-	defer func() { _ = finalTx.Rollback(ctx) }()
-	finalQtx := db.Queries.WithTx(finalTx)
-
-	// CHANGE #1: finalizeSubmission now also returns the built result so we
-	// can cache it below, instead of returning only an error.
-	result, err := finalizeSubmission(ctx, finalQtx, submissionID)
-	if err != nil {
-		return fmt.Errorf("finalize submission: %w", err)
-	}
-
-	if err := finalTx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit final tx: %w", err)
+		restoreTokenAfterFailure(ctx, payload.Token, submissionIDStr, testcaseIDStr, submissionID, err)
+		return err
 	}
 
 	// CHANGE #2: cache the finished result in Redis, only after the commit
@@ -189,6 +179,17 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	submission, err := qtx.GetSubmissionForUpdate(ctx, submissionID)
 	if err != nil {
 		return dto.ResultResponse{}, fmt.Errorf("get submission for update: %w", err)
+	}
+
+	// Guard: if a previous finalize already committed, don't re-score.
+	// This happens when the commit succeeded but the ack back to Asynq was
+	// lost -- the retry re-enters finalizeSubmission for an already-done row.
+	if submission.Status != nil &&
+		*submission.Status != utils.Judge0InQueue.GetJudge0Status() &&
+		*submission.Status != utils.Judge0Processing.GetJudge0Status() {
+		logging.Infof("submission %s: already finalized with status %q -- skipping",
+			submissionID, *submission.Status)
+		return dto.ResultResponse{}, nil
 	}
 
 	results, err := qtx.GetSubmissionResults(ctx, submissionID)
@@ -435,4 +436,47 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	logging.Infof("submission %s finalized: user=%s question=%s reward=%.2f partial_score=%.2f",
 		submissionID, submission.UserID, submission.QuestionID, reward, partialScore)
 	return response, nil
+}
+
+// runFinalize opens a dedicated transaction, calls finalizeSubmission, and
+// commits. Extracted so the caller (HandleJudge0CallbackTask) can do the
+// token-restore dance around this single call.
+func runFinalize(ctx context.Context, submissionID uuid.UUID) (dto.ResultResponse, error) {
+	finalTx, err := db.DBPool.Begin(ctx)
+	if err != nil {
+		return dto.ResultResponse{}, fmt.Errorf("begin final tx: %w", err)
+	}
+	defer func() { _ = finalTx.Rollback(ctx) }()
+
+	result, err := finalizeSubmission(ctx, db.Queries.WithTx(finalTx), submissionID)
+	if err != nil {
+		return dto.ResultResponse{}, fmt.Errorf("finalize submission: %w", err)
+	}
+
+	if err := finalTx.Commit(ctx); err != nil {
+		return dto.ResultResponse{}, fmt.Errorf("commit final tx: %w", err)
+	}
+
+	return result, nil
+}
+
+// restoreTokenAfterFailure puts a token back into Redis after the finalize
+// transaction failed, so that Asynq's automatic retry can pick the callback
+// up again instead of leaving the submission stuck "pending" forever.
+// Uses context.WithoutCancel: if the finalize failed because ctx was
+// cancelled (worker shutdown), we still need a live context for the repair.
+func restoreTokenAfterFailure(ctx context.Context, token, submissionIDStr, testcaseIDStr string, submissionID uuid.UUID, cause error) {
+	restoreCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
+	if err := utils.RestoreToken(restoreCtx, token, submissionIDStr, testcaseIDStr); err != nil {
+		logging.Errorf(
+			"CRITICAL: submission %s will stay pending -- could not restore judge0 token %q after a finalize failure (restore error: %v) (original error: %v)",
+			submissionID, token, err, cause,
+		)
+		return
+	}
+
+	logging.Warnf("submission %s: finalize failed (%v) -- restored token %q so the retry can resolve it",
+		submissionID, cause, token)
 }

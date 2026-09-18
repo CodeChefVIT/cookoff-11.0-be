@@ -55,7 +55,13 @@ func main() {
 	e.Use(emiddleware.Recover())
 	e.Use(middlewares.Logger)
 	e.Use(emiddleware.Secure())
-	e.Use(emiddleware.RateLimiter(emiddleware.NewRateLimiterMemoryStore(rate.Limit(20))))
+	e.Use(emiddleware.RateLimiterWithConfig(emiddleware.RateLimiterConfig{
+		Store: emiddleware.NewRateLimiterMemoryStore(rate.Limit(50)),
+		Skipper: func(c echo.Context) bool {
+			p := c.Path()
+			return p == "/judge0callback" || p == "/health"
+		},
+	}))
 	e.Use(emiddleware.BodyLimit("10M"))
 
 	// Configure CORS
