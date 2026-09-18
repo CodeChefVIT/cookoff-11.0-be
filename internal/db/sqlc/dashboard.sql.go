@@ -11,6 +11,54 @@ import (
 	"github.com/google/uuid"
 )
 
+const getDashboardQuestions = `-- name: GetDashboardQuestions :many
+SELECT 
+    q.id,
+    q.title,
+    q.points,
+    q.round,
+    COALESCE(a.status, 'available')::text AS attempt_status
+FROM questions q
+JOIN users u ON u.id = $1
+LEFT JOIN attempts a ON a.question_id = q.id AND a.user_id = u.id
+WHERE q.round = u.round_qualified
+ORDER BY q.title ASC, q.id ASC
+`
+
+type GetDashboardQuestionsRow struct {
+	ID            uuid.UUID
+	Title         string
+	Points        int32
+	Round         int32
+	AttemptStatus string
+}
+
+func (q *Queries) GetDashboardQuestions(ctx context.Context, id uuid.UUID) ([]GetDashboardQuestionsRow, error) {
+	rows, err := q.db.Query(ctx, getDashboardQuestions, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetDashboardQuestionsRow
+	for rows.Next() {
+		var i GetDashboardQuestionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Points,
+			&i.Round,
+			&i.AttemptStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDashboardRoundStats = `-- name: GetDashboardRoundStats :many
 SELECT 
     q.round,

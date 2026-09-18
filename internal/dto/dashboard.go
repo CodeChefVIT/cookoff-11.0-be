@@ -30,4 +30,5 @@ type DashboardResponse struct {
 	AttemptTotals  map[string]int          `json:"attempt_totals"`
 	CurrentRound   int                     `json:"current_round"`
 	RoundStatus    [3]DashboardRoundStatus `json:"round_status"`
+	Questions      []DashboardQuestion     `json:"questions"`
 }
