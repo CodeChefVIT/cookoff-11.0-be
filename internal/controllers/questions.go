@@ -23,6 +23,7 @@ import (
 type questionQueries interface {
 	questionReader
 	ListQuestionsByRound(context.Context, int32) ([]sqlc.ListQuestionsByRoundRow, error)
+	ListAllQuestions(context.Context) ([]sqlc.ListAllQuestionsRow, error)
 	ListVisualBlocksByQuestionID(context.Context, uuid.UUID) ([]sqlc.VisualBlock, error)
 	CreateQuestion(context.Context, sqlc.CreateQuestionParams) (sqlc.Question, error)
 	UpdateQuestion(context.Context, sqlc.UpdateQuestionParams) (sqlc.Question, error)
@@ -85,9 +86,10 @@ func requireRoundOpened(c echo.Context, round int32) bool {
 // invalidation is missed; admin writes invalidate immediately.
 const contentTTL = 30 * time.Second
 
-// visibleQuestion returns question qid when the signed-in player may read it:
-// it belongs to their round and that round has opened. It writes the error
-// response and returns false otherwise.
+// visibleQuestion returns question qid when the signed-in user may read it:
+// an admin always may (the admin panel edits questions of every round, before
+// any round starts); a player only when it belongs to their round and that
+// round has opened. It writes the error response and returns false otherwise.
 func visibleQuestion(c echo.Context, queries questionReader, qid uuid.UUID) (dto.QuestionResponse, bool) {
 	user, ok := middlewares.CurrentUser(c)
 	if !ok {
@@ -95,6 +97,9 @@ func visibleQuestion(c echo.Context, queries questionReader, qid uuid.UUID) (dto
 		return dto.QuestionResponse{}, false
 	}
 	q, e := cachedQuestion(c.Request().Context(), queries, qid)
+	if e == nil && strings.EqualFold(user.Role, "admin") {
+		return q, true
+	}
 	if errors.Is(e, pgx.ErrNoRows) || (e == nil && q.Round != user.RoundQualified) {
 		_ = questionError(c, http.StatusNotFound, "Question not found")
 		return dto.QuestionResponse{}, false
@@ -148,6 +153,18 @@ func (qc *QuestionController) ListByRound(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Questions retrieved", out))
 }
+func (qc *QuestionController) ListAll(c echo.Context) error {
+	rows, e := qc.queries.ListAllQuestions(c.Request().Context())
+	if e != nil {
+		return questionError(c, http.StatusInternalServerError, "Failed to load questions")
+	}
+	out := make([]dto.QuestionResponse, len(rows))
+	for i, q := range rows {
+		out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive)
+	}
+	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Questions retrieved", out))
+}
+
 func (qc *QuestionController) GetByID(c echo.Context) error {
 	qid, e := parseQuestionID(c)
 	if e != nil {

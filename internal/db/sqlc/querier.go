@@ -54,6 +54,7 @@ type Querier interface {
 	GetUserSubmissions(ctx context.Context, userID uuid.UUID) ([]GetUserSubmissionsRow, error)
 	IncrementUserRound(ctx context.Context, id uuid.UUID) (User, error)
 	LinkGoogleID(ctx context.Context, arg LinkGoogleIDParams) (User, error)
+	ListAllQuestions(ctx context.Context) ([]ListAllQuestionsRow, error)
 	ListQuestionsByRound(ctx context.Context, round int32) ([]ListQuestionsByRoundRow, error)
 	ListVisualBlocksByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualBlock, error)
 	ListVisualSolutionsByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualSolution, error)

@@ -49,6 +49,7 @@ func RegisterRoutes(e *echo.Echo) {
 	questionRoutes.GET("/:id/testcases/public", controllers.NewTestcaseController(queries).ListPublic)
 
 	adminQuestionRoutes := e.Group("/question", append(authenticated, middlewares.AdminOnly)...)
+	adminQuestionRoutes.GET("", questionController.ListAll)
 	adminQuestionRoutes.POST("", questionController.Create)
 	adminQuestionRoutes.PUT("/:id", questionController.Update)
 	adminQuestionRoutes.DELETE("/:id", questionController.Delete)

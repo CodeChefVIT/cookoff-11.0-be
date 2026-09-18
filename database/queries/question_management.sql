@@ -20,6 +20,15 @@ RETURNING *;
 -- name: DeleteQuestion :one
 DELETE FROM questions WHERE id = $1 RETURNING id;
 
+-- name: ListAllQuestions :many
+SELECT id, description, title, q_type, input_format,
+       COALESCE(buy_in::text, ''::text) AS buy_in,
+       COALESCE(reward::text, ''::text) AS reward, points, round,
+       constraints, output_format, sample_test_input, sample_test_output,
+       explanation, bounty_active
+FROM questions
+ORDER BY title ASC, id ASC;
+
 -- name: SetQuestionBountyActive :one
 UPDATE questions SET bounty_active = $2 WHERE id = $1 RETURNING *;
 
