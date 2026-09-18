@@ -87,12 +87,21 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 		return fmt.Errorf("convert memory: %w", err)
 	}
 
-	// Placeholder scoring: 1 point for a passing testcase, 0 otherwise.
-	// The schema has no per-testcase weighting yet (testcases table has no
-	// points column) -- revisit this if/when per-testcase weights are added.
+	// Calculate proportional testcase points: (question.Points / total_testcases) for a passing testcase
 	var pointsAwarded int32
 	if status == utils.Judge0Accepted.GetJudge0Status() {
-		pointsAwarded = 1
+		sub, subErr := db.Queries.GetSubmissionByID(ctx, submissionID)
+		if subErr == nil {
+			question, qErr := db.Queries.GetQuestionByID(ctx, sub.QuestionID)
+			testcases, tcErr := db.Queries.GetAllTestCasesByQuestion(ctx, sub.QuestionID)
+			if qErr == nil && tcErr == nil && len(testcases) > 0 {
+				pointsAwarded = int32(question.Points / int32(len(testcases)))
+			} else {
+				pointsAwarded = 1
+			}
+		} else {
+			pointsAwarded = 1
+		}
 	}
 
 	description := payload.Status.Description
