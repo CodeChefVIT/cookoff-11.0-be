@@ -133,12 +133,12 @@ func (c *AttemptController) createAttempt(
 		hasAvailableAttempt = true
 	}
 
-	balanceNumeric, err := qtx.GetUserBalanceForUpdate(ctx, userID)
+	question, err := qtx.GetQuestionByID(ctx, questionID)
 	if err != nil {
 		return nil, err
 	}
 
-	buyInNumeric, err := qtx.GetQuestionBuyIn(ctx, questionID)
+	balanceNumeric, err := qtx.GetUserBalanceForUpdate(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -148,9 +148,16 @@ func (c *AttemptController) createAttempt(
 		return nil, err
 	}
 
-	buyIn, err := utils.NumericToFloat64(buyInNumeric)
-	if err != nil {
-		return nil, err
+	var buyIn float64
+	if question.Round != 1 {
+		buyInNumeric, err := qtx.GetQuestionBuyIn(ctx, questionID)
+		if err != nil {
+			return nil, err
+		}
+		buyIn, err = utils.NumericToFloat64(buyInNumeric)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if balance < buyIn {

@@ -11,39 +11,40 @@ import (
 	"github.com/google/uuid"
 )
 
-const listDashboardQuestions = `-- name: ListDashboardQuestions :many
-SELECT q.id, q.title, q.points, q.round,
-       COALESCE(a.status, 'available') AS attempt_status
+const getDashboardRoundStats = `-- name: GetDashboardRoundStats :many
+SELECT 
+    q.round,
+    COUNT(CASE WHEN a.status = 'answered' THEN 1 END)::int AS questions_completed,
+    COUNT(CASE WHEN a.status = 'bought' OR (q.round = 1 AND (a.status IS NULL OR a.status = 'available')) THEN 1 END)::int AS questions_incomplete,
+    COALESCE(SUM(CASE WHEN a.status = 'answered' THEN q.points ELSE 0 END), 0)::int AS round_score
 FROM questions q
 JOIN users u ON u.id = $1
 LEFT JOIN attempts a ON a.question_id = q.id AND a.user_id = u.id
-WHERE q.round = u.round_qualified
-ORDER BY q.round ASC, q.title ASC, q.id ASC
+GROUP BY q.round
+ORDER BY q.round ASC
 `
 
-type ListDashboardQuestionsRow struct {
-	ID            uuid.UUID
-	Title         string
-	Points        int32
-	Round         int32
-	AttemptStatus string
+type GetDashboardRoundStatsRow struct {
+	Round               int32
+	QuestionsCompleted  int32
+	QuestionsIncomplete int32
+	RoundScore          int32
 }
 
-func (q *Queries) ListDashboardQuestions(ctx context.Context, id uuid.UUID) ([]ListDashboardQuestionsRow, error) {
-	rows, err := q.db.Query(ctx, listDashboardQuestions, id)
+func (q *Queries) GetDashboardRoundStats(ctx context.Context, id uuid.UUID) ([]GetDashboardRoundStatsRow, error) {
+	rows, err := q.db.Query(ctx, getDashboardRoundStats, id)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListDashboardQuestionsRow
+	var items []GetDashboardRoundStatsRow
 	for rows.Next() {
-		var i ListDashboardQuestionsRow
+		var i GetDashboardRoundStatsRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.Title,
-			&i.Points,
 			&i.Round,
-			&i.AttemptStatus,
+			&i.QuestionsCompleted,
+			&i.QuestionsIncomplete,
+			&i.RoundScore,
 		); err != nil {
 			return nil, err
 		}

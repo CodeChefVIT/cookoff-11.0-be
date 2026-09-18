@@ -211,6 +211,36 @@ func (ac *AdminController) UpgradeUser(c echo.Context) error {
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("User upgraded successfully", res))
 }
 
+func (ac *AdminController) UpgradeAllUsers(c echo.Context) error {
+	ctx := c.Request().Context()
+	var req dto.UpgradeAllUsersRequest
+	if err := c.Bind(&req); err != nil && c.Request().ContentLength > 0 {
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse("Invalid request payload", err.Error()))
+	}
+
+	targetRound := int32(2)
+	if req.TargetRound != nil && *req.TargetRound > 0 {
+		targetRound = *req.TargetRound
+	} else if req.Round != nil && *req.Round > 0 {
+		targetRound = *req.Round
+	}
+
+	rowsAffected, err := ac.queries.UpgradeAllUsersRound(ctx, targetRound)
+	if err != nil {
+		logging.Errorf("UpgradeAllUsers failed: %v", err)
+		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to upgrade all users", err.Error()))
+	}
+
+	logging.Infof("Upgraded %d users to round %d by admin", rowsAffected, targetRound)
+	return c.JSON(http.StatusOK, dto.NewSuccessResponse(
+		"All non-banned users upgraded successfully",
+		echo.Map{
+			"round_qualified": targetRound,
+			"users_upgraded":  rowsAffected,
+		},
+	))
+}
+
 func (ac *AdminController) GetUserSubmissions(c echo.Context) error {
 	ctx := c.Request().Context()
 	id, err := uuid.Parse(c.Param("id"))

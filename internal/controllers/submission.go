@@ -68,6 +68,10 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch question", nil))
 	}
 
+	if question.Round == 1 || question.QType == "visual" {
+		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse("Code submission is only available for Round 2 and Round 3 questions", nil))
+	}
+
 	if user.RoundQualified != question.Round {
 		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("User not qualified for this round", nil))
 	}
