@@ -57,7 +57,6 @@ type Querier interface {
 	IncrementUserRound(ctx context.Context, id uuid.UUID) (User, error)
 	LinkGoogleID(ctx context.Context, arg LinkGoogleIDParams) (User, error)
 	ListAllQuestions(ctx context.Context) ([]ListAllQuestionsRow, error)
-	ListDashboardQuestions(ctx context.Context, id uuid.UUID) ([]ListDashboardQuestionsRow, error)
 	ListQuestionsByRound(ctx context.Context, round int32) ([]ListQuestionsByRoundRow, error)
 	ListQuestionsForUser(ctx context.Context, id uuid.UUID) ([]ListQuestionsForUserRow, error)
 	ListVisualBlocksByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualBlock, error)
