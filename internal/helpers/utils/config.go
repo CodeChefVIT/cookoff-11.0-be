@@ -56,6 +56,9 @@ type cfg struct {
 	// open, exactly as before.
 	Judge0CallbackSecret string `env:"JUDGE0_CALLBACK_SECRET"`
 	Judge0URI            string `env:"JUDGE0_URI"`
+	// Sent as X-Auth-Token on every Judge0 request; must match AUTHN_TOKEN in
+	// judge0.conf. Leave unset when the instance has authentication disabled.
+	Judge0AuthToken string `env:"JUDGE0_AUTH_TOKEN"`
 }
 
 var Config cfg
