@@ -10,8 +10,8 @@ import (
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/timer"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/submission"
@@ -69,7 +69,7 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch question", nil))
 	}
 
-	currentRound:=int(timer.GetCurrentRound(ctx))
+	currentRound := int(timer.GetCurrentRound(ctx))
 	if currentRound != int(question.Round) {
 		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Round not active", nil))
 	}
@@ -83,7 +83,7 @@ func SubmitCode(c echo.Context) error {
 	}
 
 	//do question ownership check only when it is 2nd round
-	if currentRound==2{
+	if currentRound == 2 {
 		attempt, err := db.Queries.GetAttempt(ctx, sqlc.GetAttemptParams{
 			UserID:     userID,
 			QuestionID: questionID,
@@ -98,8 +98,8 @@ func SubmitCode(c echo.Context) error {
 			return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Question not purchased — buy this question before submitting", nil))
 		}
 
-	} 
-	
+	}
+
 	submissionID := uuid.New()
 	logging.Infof("Created submission ID: %v", submissionID)
 
@@ -181,4 +181,3 @@ func SubmitCode(c echo.Context) error {
 		"submission_id": submissionID,
 	}))
 }
-
