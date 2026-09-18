@@ -84,7 +84,8 @@ func SubmitCode(c echo.Context) error {
 
 	//do question ownership check only when it is 2nd round
 	if currentRound == 2 {
-		attempt, err := db.Queries.GetAttempt(ctx, sqlc.GetAttemptParams{
+		var attempt sqlc.Attempt
+		attempt, err = db.Queries.GetAttempt(ctx, sqlc.GetAttemptParams{
 			UserID:     userID,
 			QuestionID: questionID,
 		})
@@ -94,10 +95,9 @@ func SubmitCode(c echo.Context) error {
 			}
 			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
 		}
-		if !(attempt.Status == "bought" || attempt.Status == "answered") {
+		if attempt.Status != "bought" && attempt.Status != "answered" {
 			return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Question not purchased — buy this question before submitting", nil))
 		}
-
 	}
 
 	submissionID := uuid.New()
