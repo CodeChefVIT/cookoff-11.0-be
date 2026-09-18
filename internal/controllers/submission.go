@@ -11,6 +11,7 @@ import (
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/timer"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/submission"
@@ -72,13 +73,13 @@ func SubmitCode(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse("Code submission is only available for Round 2 and Round 3 questions", nil))
 	}
 
-	if user.RoundQualified != question.Round {
+	if user.RoundQualified < question.Round {
 		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("User not qualified for this round", nil))
 	}
-
-	if !ensureRoundRunning(c, question.Round) {
-		return nil
+	if timer.GetCurrentRound(ctx) != question.Round {
+		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Round not active", nil))
 	}
+	
 
 	// The buy-in/reward economy applies to every round's code questions, not
 	// just the visual one — mirrors the same check submit_round1.go already
