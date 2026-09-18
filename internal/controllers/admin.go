@@ -164,8 +164,8 @@ func (ac *AdminController) UpgradeUser(c echo.Context) error {
 		targetRound = req.Round
 	}
 
-	if targetRound != nil && (*targetRound < 1 || *targetRound > maxRound) {
-		return c.JSON(http.StatusBadRequest, dto.NewCodedError("round_qualified must be between 1 and 3", dto.CodeValidation))
+	if targetRound != nil && (*targetRound < 0 || *targetRound > maxRound) {
+		return c.JSON(http.StatusBadRequest, dto.NewCodedError("round_qualified must be between 0 and 3", dto.CodeValidation))
 	}
 
 	updatedUser := existingUser
