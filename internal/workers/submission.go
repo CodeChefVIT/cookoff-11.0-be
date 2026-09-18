@@ -154,7 +154,7 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 
 	// Step 4: this was the last outstanding testcase. Aggregate every
 	// submission_results row into the parent submissions row in a dedicated
-	// final transaction. 
+	// final transaction.
 	result, err := runFinalize(ctx, submissionID)
 	if err != nil {
 		restoreTokenAfterFailure(ctx, payload.Token, submissionIDStr, testcaseIDStr, submissionID, err)
@@ -180,7 +180,6 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		return dto.ResultResponse{}, fmt.Errorf("get submission for update: %w", err)
 	}
 
-	
 	if submission.Status != nil &&
 		*submission.Status != utils.Judge0InQueue.GetJudge0Status() &&
 		*submission.Status != utils.Judge0Processing.GetJudge0Status() {
@@ -434,7 +433,6 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		submissionID, submission.UserID, submission.QuestionID, reward, partialScore)
 	return response, nil
 }
-
 
 func runFinalize(ctx context.Context, submissionID uuid.UUID) (dto.ResultResponse, error) {
 	finalTx, err := db.DBPool.Begin(ctx)
