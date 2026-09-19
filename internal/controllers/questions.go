@@ -20,6 +20,11 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+type questionReader interface {
+	GetQuestionByID(context.Context, uuid.UUID) (sqlc.GetQuestionByIDRow, error)
+	ListVisualBlocksByQuestionID(context.Context, uuid.UUID) ([]sqlc.VisualBlock, error)
+}
+
 type questionQueries interface {
 	questionReader
 	ListQuestionsByRound(context.Context, int32) ([]sqlc.ListQuestionsByRoundRow, error)
@@ -29,6 +34,12 @@ type questionQueries interface {
 	UpdateQuestion(context.Context, sqlc.UpdateQuestionParams) (sqlc.Question, error)
 	DeleteQuestion(context.Context, uuid.UUID) (uuid.UUID, error)
 	SetQuestionBountyActive(context.Context, sqlc.SetQuestionBountyActiveParams) (sqlc.Question, error)
+	CreateVisualBlock(context.Context, sqlc.CreateVisualBlockParams) (sqlc.VisualBlock, error)
+	DeleteVisualBlock(context.Context, sqlc.DeleteVisualBlockParams) error
+	DeleteVisualBlocksByQuestionID(context.Context, sqlc.DeleteVisualBlocksByQuestionIDParams) error
+	CreateVisualSolution(context.Context, sqlc.CreateVisualSolutionParams) (sqlc.VisualSolution, error)
+	DeleteVisualSolution(context.Context, sqlc.DeleteVisualSolutionParams) error
+	DeleteVisualSolutionsByQuestionID(context.Context, sqlc.DeleteVisualSolutionsByQuestionIDParams) error
 }
 
 type QuestionController struct{ queries questionQueries }
@@ -114,17 +125,20 @@ func visibleQuestion(c echo.Context, queries questionReader, qid uuid.UUID) (dto
 	return q, true
 }
 
-type questionReader interface {
-	GetQuestionByID(context.Context, uuid.UUID) (sqlc.GetQuestionByIDRow, error)
-}
-
 func cachedQuestion(ctx context.Context, queries questionReader, qid uuid.UUID) (dto.QuestionResponse, error) {
 	return utils.Cached(ctx, utils.ContentCachePrefix+"question:"+qid.String(), contentTTL, func(ctx context.Context) (dto.QuestionResponse, error) {
 		q, err := queries.GetQuestionByID(ctx, qid)
 		if err != nil {
 			return dto.QuestionResponse{}, err
 		}
-		return questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive), nil
+		blocks, err := queries.ListVisualBlocksByQuestionID(ctx, qid)
+		var scratchBlocks []string
+		if err == nil {
+			for _, b := range blocks {
+				scratchBlocks = append(scratchBlocks, b.Content)
+			}
+		}
+		return questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, scratchBlocks), nil
 	})
 }
 
@@ -144,7 +158,7 @@ func (qc *QuestionController) ListByRound(c echo.Context) error {
 		}
 		out := make([]dto.QuestionResponse, len(rows))
 		for i, q := range rows {
-			out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive)
+			out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, nil)
 		}
 		return out, nil
 	})
@@ -160,7 +174,7 @@ func (qc *QuestionController) ListAll(c echo.Context) error {
 	}
 	out := make([]dto.QuestionResponse, len(rows))
 	for i, q := range rows {
-		out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive)
+		out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, nil)
 	}
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Questions retrieved", out))
 }
@@ -216,6 +230,33 @@ func (qc *QuestionController) Create(c echo.Context) error {
 	if e != nil {
 		return questionError(c, http.StatusInternalServerError, "Failed to create question")
 	}
+	var blockIDs []uuid.UUID
+	for _, block := range r.ScratchBlocks {
+		b, e := qc.queries.CreateVisualBlock(c.Request().Context(), sqlc.CreateVisualBlockParams{ID: uuid.New(), QuestionID: q.ID, Content: block})
+		if e != nil {
+			return questionError(c, http.StatusInternalServerError, "Failed to create visual block", e)
+		}
+		blockIDs = append(blockIDs, b.ID)
+	}
+	for i, solution := range r.Solutions {
+		if i >= len(r.SolutionPoints) {
+			continue
+		}
+		var solutionBlockIDs []uuid.UUID
+		for _, idx := range solution {
+			if idx >= 0 && idx < len(blockIDs) {
+				solutionBlockIDs = append(solutionBlockIDs, blockIDs[idx])
+			}
+		}
+		pts, e := utils.Float64ToNumeric(r.SolutionPoints[i])
+		if e != nil {
+			return questionError(c, http.StatusInternalServerError, "Invalid solution points", e)
+		}
+		_, e = qc.queries.CreateVisualSolution(c.Request().Context(), sqlc.CreateVisualSolutionParams{ID: uuid.New(), QuestionID: q.ID, Solution: solutionBlockIDs, Points: pts})
+		if e != nil {
+			return questionError(c, http.StatusInternalServerError, "Failed to create visual solution", e)
+		}
+	}
 	utils.InvalidateContentCache(c.Request().Context())
 	return c.JSON(201, dto.NewSuccessResponse("Question created", questionFromModel(q)))
 }
@@ -237,6 +278,16 @@ func (qc *QuestionController) Update(c echo.Context) error {
 	}
 	if e != nil {
 		return questionError(c, http.StatusInternalServerError, "Failed to update question")
+	}
+	e = qc.queries.DeleteVisualBlocksByQuestionID(c.Request().Context(), sqlc.DeleteVisualBlocksByQuestionIDParams{QuestionID: id})
+	if e != nil {
+		return questionError(c, http.StatusInternalServerError, "Failed to delete visual blocks", e)
+	}
+	for _, block := range r.ScratchBlocks {
+		_, err := qc.queries.CreateVisualBlock(c.Request().Context(), sqlc.CreateVisualBlockParams{ID: uuid.New(), QuestionID: id, Content: block})
+		if err != nil {
+			return questionError(c, http.StatusInternalServerError, "Failed to create visual block", err)
+		}
 	}
 	utils.InvalidateContentCache(c.Request().Context())
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Question updated", questionFromModel(q)))
@@ -284,10 +335,10 @@ func questionParams(id uuid.UUID, r dto.QuestionRequest) sqlc.CreateQuestionPara
 	return p
 }
 func questionFromModel(q sqlc.Question) dto.QuestionResponse {
-	return questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive)
+	return questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, nil)
 }
-func questionFromRow(id uuid.UUID, d, t, typ string, in []string, buy, reward interface{}, pts, rnd int32, cons, out, sin, sout, exp []string, active bool) dto.QuestionResponse {
-	return dto.QuestionResponse{ID: id, Description: d, Title: t, Type: typ, InputFormat: in, BuyIn: textValue(buy), Reward: textValue(reward), Points: pts, Round: rnd, Constraints: cons, OutputFormat: out, SampleTestInput: sin, SampleTestOutput: sout, Explanation: exp, BountyActive: active}
+func questionFromRow(id uuid.UUID, d, t, typ string, in []string, buy, reward interface{}, pts, rnd int32, cons, out, sin, sout, exp []string, active bool, scratchBlocks []string) dto.QuestionResponse {
+	return dto.QuestionResponse{ID: id, Description: d, Title: t, Type: typ, InputFormat: in, BuyIn: textValue(buy), Reward: textValue(reward), Points: pts, Round: rnd, Constraints: cons, OutputFormat: out, SampleTestInput: sin, SampleTestOutput: sout, Explanation: exp, BountyActive: active, ScratchBlocks: scratchBlocks}
 }
 func textValue(v interface{}) string {
 	switch x := v.(type) {
@@ -302,4 +353,73 @@ func textValue(v interface{}) string {
 		}
 	}
 	return ""
+}
+
+type VisualBlockRequest struct {
+	QuestionID uuid.UUID `json:"question_id" validate:"required"`
+	Content    string    `json:"content" validate:"required"`
+}
+
+type VisualSolutionRequest struct {
+	QuestionID uuid.UUID   `json:"question_id" validate:"required"`
+	Solution   []uuid.UUID `json:"solution" validate:"required"`
+	Points     float64     `json:"points" validate:"gte=0"`
+}
+
+func (qc *QuestionController) CreateVisualBlock(c echo.Context) error {
+	var req VisualBlockRequest
+	if e := c.Bind(&req); e != nil {
+		return questionError(c, http.StatusBadRequest, "Invalid request body")
+	}
+	if e := c.Validate(&req); e != nil {
+		return questionError(c, http.StatusBadRequest, "Validation failed")
+	}
+	block, e := qc.queries.CreateVisualBlock(c.Request().Context(), sqlc.CreateVisualBlockParams{ID: uuid.New(), QuestionID: req.QuestionID, Content: req.Content})
+	if e != nil {
+		return questionError(c, http.StatusInternalServerError, "Failed to create visual block", e)
+	}
+	utils.InvalidateContentCache(c.Request().Context())
+	return c.JSON(http.StatusCreated, dto.NewSuccessResponse("Visual block created", block))
+}
+
+func (qc *QuestionController) CreateVisualSolution(c echo.Context) error {
+	var req VisualSolutionRequest
+	if e := c.Bind(&req); e != nil {
+		return questionError(c, http.StatusBadRequest, "Invalid request body")
+	}
+	if e := c.Validate(&req); e != nil {
+		return questionError(c, http.StatusBadRequest, "Validation failed")
+	}
+	pts, e := utils.Float64ToNumeric(req.Points)
+	if e != nil {
+		return questionError(c, http.StatusBadRequest, "Invalid points value")
+	}
+	sol, e := qc.queries.CreateVisualSolution(c.Request().Context(), sqlc.CreateVisualSolutionParams{ID: uuid.New(), QuestionID: req.QuestionID, Solution: req.Solution, Points: pts})
+	if e != nil {
+		return questionError(c, http.StatusInternalServerError, "Failed to create visual solution", e)
+	}
+	return c.JSON(http.StatusCreated, dto.NewSuccessResponse("Visual solution created", sol))
+}
+
+func (qc *QuestionController) DeleteVisualBlock(c echo.Context) error {
+	id, e := uuid.Parse(c.Param("id"))
+	if e != nil {
+		return questionError(c, http.StatusBadRequest, "Invalid block ID")
+	}
+	if e := qc.queries.DeleteVisualBlock(c.Request().Context(), sqlc.DeleteVisualBlockParams{ID: id}); e != nil {
+		return questionError(c, http.StatusInternalServerError, "Failed to delete visual block", e)
+	}
+	utils.InvalidateContentCache(c.Request().Context())
+	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Visual block deleted", nil))
+}
+
+func (qc *QuestionController) DeleteVisualSolution(c echo.Context) error {
+	id, e := uuid.Parse(c.Param("id"))
+	if e != nil {
+		return questionError(c, http.StatusBadRequest, "Invalid solution ID")
+	}
+	if e := qc.queries.DeleteVisualSolution(c.Request().Context(), sqlc.DeleteVisualSolutionParams{ID: id}); e != nil {
+		return questionError(c, http.StatusInternalServerError, "Failed to delete visual solution", e)
+	}
+	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Visual solution deleted", nil))
 }

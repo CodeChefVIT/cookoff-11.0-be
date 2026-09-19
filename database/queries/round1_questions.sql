@@ -51,3 +51,14 @@ SELECT id, question_id, content
 FROM visual_blocks
 WHERE question_id = $1
 ORDER BY id ASC;
+
+-- name: CreateVisualBlock :one
+INSERT INTO visual_blocks (id, question_id, content)
+VALUES ($1, $2, $3)
+RETURNING id, question_id, content;
+
+-- name: DeleteVisualBlock :exec
+DELETE FROM visual_blocks WHERE id = $1;
+
+-- name: DeleteVisualBlocksByQuestionID :exec
+DELETE FROM visual_blocks WHERE question_id = $1;
