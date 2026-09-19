@@ -85,7 +85,9 @@ func main() {
 		},
 		Skipper: middlewares.RateLimitSkipper,
 	}))
-	e.Use(emiddleware.BodyLimit("25M"))
+	// Large testcase payloads can legitimately exceed the old 25 MB cap when
+	// admins upload a big input/output pair, so allow a much larger request body.
+	e.Use(emiddleware.BodyLimit("256M"))
 
 	// Register routes
 	router.RegisterRoutes(e)
