@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"errors"
 	"strconv"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -12,11 +11,9 @@ func NumericToFloat64(number pgtype.Numeric) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-
 	if !value.Valid {
-		return 0, errors.New("invalid numeric value")
+		return 0, nil
 	}
-
 	return value.Float64, nil
 }
 
