@@ -58,7 +58,13 @@ type Querier interface {
 	ListAllQuestions(ctx context.Context) ([]ListAllQuestionsRow, error)
 	ListQuestionsByRound(ctx context.Context, round int32) ([]ListQuestionsByRoundRow, error)
 	ListVisualBlocksByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualBlock, error)
+	CreateVisualBlock(ctx context.Context, arg CreateVisualBlockParams) (VisualBlock, error)
+	DeleteVisualBlock(ctx context.Context, arg DeleteVisualBlockParams) error
+	DeleteVisualBlocksByQuestionID(ctx context.Context, arg DeleteVisualBlocksByQuestionIDParams) error
 	ListVisualSolutionsByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualSolution, error)
+	CreateVisualSolution(ctx context.Context, arg CreateVisualSolutionParams) (VisualSolution, error)
+	DeleteVisualSolution(ctx context.Context, arg DeleteVisualSolutionParams) error
+	DeleteVisualSolutionsByQuestionID(ctx context.Context, arg DeleteVisualSolutionsByQuestionIDParams) error
 	SetQuestionBountyActive(ctx context.Context, arg SetQuestionBountyActiveParams) (Question, error)
 	UnbanUser(ctx context.Context, id uuid.UUID) (User, error)
 	UpdateAttemptStatus(ctx context.Context, arg UpdateAttemptStatusParams) error

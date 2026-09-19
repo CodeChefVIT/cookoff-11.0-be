@@ -190,3 +190,48 @@ func (q *Queries) ListVisualBlocksByQuestionID(ctx context.Context, questionID u
 	}
 	return items, nil
 }
+
+const createVisualBlock = `-- name: CreateVisualBlock :one
+INSERT INTO visual_blocks (id, question_id, content)
+VALUES ($1, $2, $3)
+RETURNING id, question_id, content
+`
+
+type CreateVisualBlockParams struct {
+	ID         uuid.UUID
+	QuestionID uuid.UUID
+	Content    string
+}
+
+func (q *Queries) CreateVisualBlock(ctx context.Context, arg CreateVisualBlockParams) (VisualBlock, error) {
+	row := q.db.QueryRow(ctx, createVisualBlock, arg.ID, arg.QuestionID, arg.Content)
+	var i VisualBlock
+	err := row.Scan(&i.ID, &i.QuestionID, &i.Content)
+	return i, err
+}
+
+const deleteVisualBlock = `-- name: DeleteVisualBlock :exec
+DELETE FROM visual_blocks WHERE id = $1
+`
+
+type DeleteVisualBlockParams struct {
+	ID uuid.UUID
+}
+
+func (q *Queries) DeleteVisualBlock(ctx context.Context, arg DeleteVisualBlockParams) error {
+	_, err := q.db.Exec(ctx, deleteVisualBlock, arg.ID)
+	return err
+}
+
+const deleteVisualBlocksByQuestionID = `-- name: DeleteVisualBlocksByQuestionID :exec
+DELETE FROM visual_blocks WHERE question_id = $1
+`
+
+type DeleteVisualBlocksByQuestionIDParams struct {
+	QuestionID uuid.UUID
+}
+
+func (q *Queries) DeleteVisualBlocksByQuestionID(ctx context.Context, arg DeleteVisualBlocksByQuestionIDParams) error {
+	_, err := q.db.Exec(ctx, deleteVisualBlocksByQuestionID, arg.QuestionID)
+	return err
+}

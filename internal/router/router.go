@@ -43,7 +43,7 @@ func RegisterRoutes(e *echo.Echo) {
 	e.POST("/runcode", controllers.RunCode, authenticated...)
 	e.POST("/runcustom", controllers.RunCustom, authenticated...)
 
-	questionController := controllers.NewQuestionController(queries)
+	questionController := controllers.NewQuestionController(db.DBPool, queries)
 	questionRoutes := e.Group("/question", authenticated...)
 	questionRoutes.GET("/round", questionController.ListByRound)
 	questionRoutes.GET("/:id", questionController.GetByID)
@@ -58,6 +58,10 @@ func RegisterRoutes(e *echo.Echo) {
 	adminQuestionRoutes.POST("/:id/bounty/activate", questionController.SetBounty(true))
 	adminQuestionRoutes.POST("/:id/bounty/deactivate", questionController.SetBounty(false))
 	adminQuestionRoutes.GET("/:id/testcases", controllers.NewTestcaseController(queries).ListAllForQuestion)
+	adminQuestionRoutes.POST("/:id/blocks", questionController.CreateVisualBlock)
+	adminQuestionRoutes.POST("/:id/solutions", questionController.CreateVisualSolution)
+	adminQuestionRoutes.DELETE("/blocks/:blockId", questionController.DeleteVisualBlock)
+	adminQuestionRoutes.DELETE("/solutions/:solutionId", questionController.DeleteVisualSolution)
 
 	testcaseController := controllers.NewTestcaseController(queries)
 	adminTestcaseRoutes := e.Group("/testcase", append(authenticated, middlewares.AdminOnly)...)
