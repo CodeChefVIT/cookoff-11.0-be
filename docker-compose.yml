@@ -6,7 +6,7 @@ services:
     container_name: cookoff_11_postgres
     restart: unless-stopped
     ports:
-      - "${POSTGRES_HOST_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
@@ -24,7 +24,7 @@ services:
     container_name: cookoff_11_redis
     restart: unless-stopped
     ports:
-      - "${REDIS_HOST_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
     command: redis-server --requirepass ${REDIS_PASSWORD:-super_secure_redis_pass_123}
     volumes:
       - redis_data:/data
@@ -86,7 +86,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-super_secure_redis_pass_123}
       - FRONTEND_URL=${FRONTEND_URL:?FRONTEND_URL is required}
       - ADMIN_URL=${ADMIN_URL:?ADMIN_URL is required}
       - BACKEND_URL=${BACKEND_URL:-http://localhost:8080}
@@ -149,7 +149,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-super_secure_redis_pass_123}
       - ELASTIC_HOST=${ELASTIC_HOST:-localhost}
       - ELASTIC_PORT=${ELASTIC_PORT:-9200}
       - ELASTIC_SCHEME=${ELASTIC_SCHEME:-http}
