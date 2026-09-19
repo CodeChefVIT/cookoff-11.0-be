@@ -25,6 +25,7 @@ type cfg struct {
 	GoogleAuthURL      string        `env:"GOOGLE_AUTH_URL" envDefault:"https://accounts.google.com/o/oauth2/v2/auth"`
 	GoogleTokenURL     string        `env:"GOOGLE_TOKEN_URL" envDefault:"https://oauth2.googleapis.com/token"`
 	GoogleInfoURL      string        `env:"GOOGLE_INFO_URL" envDefault:"https://oauth2.googleapis.com/tokeninfo"`
+	AllowedEmailDomain string        `env:"ALLOWED_EMAIL_DOMAIN"`
 	AccessTokenTTL     time.Duration `env:"ACCESS_TOKEN_TTL" envDefault:"15m"`
 	RefreshTokenTTL    time.Duration `env:"REFRESH_TOKEN_TTL" envDefault:"48h"`
 
