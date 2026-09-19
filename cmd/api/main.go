@@ -85,7 +85,7 @@ func main() {
 		},
 		Skipper: middlewares.RateLimitSkipper,
 	}))
-	e.Use(emiddleware.BodyLimit("10M"))
+	e.Use(emiddleware.BodyLimit("25M"))
 
 	// Register routes
 	router.RegisterRoutes(e)
