@@ -92,7 +92,6 @@ func GetSubmissionIDByToken(ctx context.Context, token string) (submissionID, te
 	return parts[0], parts[1], nil
 }
 
-
 // DeleteTokenAndCount removes a token AND reads how many tokens remain in
 // the submission's outstanding-token set, as a single Redis MULTI/EXEC
 // transaction (via TxPipeline). This is the fix for a real race condition:

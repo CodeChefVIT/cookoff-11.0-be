@@ -270,7 +270,7 @@ func (qc *QuestionController) SetBounty(active bool) echo.HandlerFunc {
 			return questionError(c, http.StatusInternalServerError, "Failed to update bounty")
 		}
 		utils.InvalidateContentCache(c.Request().Context())
-	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Bounty updated", questionFromModel(q)))
+		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Bounty updated", questionFromModel(q)))
 	}
 }
 func questionParams(id uuid.UUID, r dto.QuestionRequest) sqlc.CreateQuestionParams {
