@@ -3,25 +3,24 @@ package controllers
 import (
 	"net/http"
 
+  scalar "github.com/MarceloPetrucio/go-scalar-api-reference"
 	"github.com/labstack/echo/v4"
 )
 
-const scalarHTML = `<!DOCTYPE html>
-<html>
-  <head>
-    <title>Cookoff 11.0 Backend API Docs</title>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-  </head>
-  <body>
-    <script
-      id="api-reference"
-      data-url="/docs.yaml">
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.25.30/dist/browser/standalone.js"></script>
-  </body>
-</html>`
-
 func ServeDocs(c echo.Context) error {
-	return c.HTML(http.StatusOK, scalarHTML)
+  content, err := scalar.ApiReferenceHTML(&scalar.Options{
+    SpecURL: "./docs/docs.yaml",
+    CustomOptions: scalar.CustomOptions{
+      PageTitle: "Cookoff 11.0 Backend API Docs",
+    },
+    DarkMode: true,
+  })
+  if err != nil {
+    return c.JSON(http.StatusInternalServerError, map[string]string{
+      "status":  "error",
+      "message": err.Error(),
+    })
+  }
+
+  return c.HTML(http.StatusOK, content)
 }

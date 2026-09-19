@@ -24,6 +24,7 @@ tags:
     description: Participant question listing, question details, and Scratch visual blocks
   - name: Testcases
     description: Public sample testcases and administrative testcase management
+
   - name: Admin Question Management
     description: Administrative question creation, update, deletion, and bounty management
   - name: Admin User Management
@@ -44,6 +45,7 @@ paths:
           content:
             application/json:
               example:
+
                 success: true
                 message: "Health check completed"
                 data:
@@ -338,27 +340,6 @@ paths:
         '200':
           description: List of questions retrieved.
 
-  /question/{id}:
-    get:
-      tags:
-        - Questions
-      summary: Get question by ID
-      description: Fetches full question details including title, description, constraints, and sample I/O.
-      security:
-        - CookieAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Question details retrieved.
-        '404':
-          description: Question not found.
-
   /question/{id}/blocks:
     get:
       tags:
@@ -427,6 +408,26 @@ paths:
           description: Question created.
 
   /question/{id}:
+    get:
+      tags:
+        - Questions
+      summary: Get question by ID
+      description: Fetches full question details including title, description, constraints, and sample I/O.
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Question details retrieved.
+        '404':
+          description: Question not found.
+
     put:
       tags:
         - Admin Question Management
