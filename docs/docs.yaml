@@ -40,23 +40,22 @@ paths:
       summary: Health check endpoint
       description: Verifies external connectivity to PostgreSQL database pool and Redis cache.
       responses:
-        '200':
+        "200":
           description: All backend services operational.
           content:
             application/json:
               example:
-
                 success: true
                 message: "Health check completed"
                 data:
                   postgres: "OK"
                   redis: "OK"
-        '503':
+        "503":
           description: One or more dependencies are unreachable.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /docs:
     get:
@@ -65,7 +64,7 @@ paths:
       summary: Interactive API documentation UI
       description: Renders interactive API documentation via Scalar API reference UI.
       responses:
-        '200':
+        "200":
           description: HTML page rendering Scalar API Documentation.
 
   /auth/google:
@@ -75,7 +74,7 @@ paths:
       summary: Initiate Google OAuth flow
       description: Redirects participant browser to Google OAuth 2.0 authorization endpoint.
       responses:
-        '302':
+        "302":
           description: Redirect to Google authorization URL.
 
   /auth/google/callback:
@@ -91,9 +90,9 @@ paths:
           schema:
             type: string
       responses:
-        '302':
+        "302":
           description: Redirect to frontend dashboard upon successful authentication or login error redirect (?error=...).
-        '401':
+        "401":
           description: Invalid authentication code or unauthorized domain.
 
   /api/v1/auth/google:
@@ -103,7 +102,7 @@ paths:
       summary: Initiate Google OAuth flow (Legacy Alias)
       description: Alias for `/auth/google` to support legacy Google Console redirect URIs.
       responses:
-        '302':
+        "302":
           description: Redirect to Google authorization URL.
 
   /api/v1/auth/google/callback:
@@ -119,7 +118,7 @@ paths:
           schema:
             type: string
       responses:
-        '302':
+        "302":
           description: Redirect to frontend dashboard.
 
   /refreshToken:
@@ -129,9 +128,9 @@ paths:
       summary: Refresh JWT access token
       description: Uses valid refresh token cookie to issue a new access token cookie.
       responses:
-        '200':
+        "200":
           description: Token refreshed successfully.
-        '401':
+        "401":
           description: Missing or expired refresh token.
 
   /logout:
@@ -141,7 +140,7 @@ paths:
       summary: User logout
       description: Invalidates active JWT session and clears cookies.
       responses:
-        '200':
+        "200":
           description: Logged out successfully.
 
   /dashboard:
@@ -153,13 +152,13 @@ paths:
       security:
         - CookieAuth: []
       responses:
-        '200':
+        "200":
           description: Dashboard retrieved successfully.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DashboardResponseEnvelope'
-        '401':
+                $ref: "#/components/schemas/DashboardResponseEnvelope"
+        "401":
           description: Unauthorized or missing authentication cookie.
 
   /getTime:
@@ -171,12 +170,12 @@ paths:
       security:
         - CookieAuth: []
       responses:
-        '200':
+        "200":
           description: Timer status retrieved successfully.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TimerResponseEnvelope'
+                $ref: "#/components/schemas/TimerResponseEnvelope"
 
   /submit:
     post:
@@ -191,9 +190,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SubmissionRequest'
+              $ref: "#/components/schemas/SubmissionRequest"
       responses:
-        '200':
+        "200":
           description: Code submission accepted and enqueued for evaluation.
           content:
             application/json:
@@ -202,11 +201,11 @@ paths:
                 message: "Submission created"
                 data:
                   submission_id: "7f9e4210-91ab-4c3e-812d-0123456789ab"
-        '400':
+        "400":
           description: Invalid payload or attempting Round 1 submission via code endpoint (VALIDATION).
-        '403':
+        "403":
           description: User not qualified for question round (NOT_QUALIFIED) or question not purchased (NOT_PURCHASED).
-        '423':
+        "423":
           description: Contest timer is not currently running for this round (ROUND_NOT_RUNNING).
 
   /result/{submission_id}:
@@ -225,15 +224,15 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Terminal submission result retrieved.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ResultResponseEnvelope'
-        '404':
+                $ref: "#/components/schemas/ResultResponseEnvelope"
+        "404":
           description: Submission ID not found (NOT_FOUND).
-        '408':
+        "408":
           description: Submission is still being evaluated by Judge0 worker (STILL_JUDGING).
 
   /submit/visual:
@@ -249,17 +248,17 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SubmitVisualSolutionRequest'
+              $ref: "#/components/schemas/SubmitVisualSolutionRequest"
       responses:
-        '200':
+        "200":
           description: Solution submitted successfully.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SubmitVisualSolutionResponseEnvelope'
-        '400':
+                $ref: "#/components/schemas/SubmitVisualSolutionResponseEnvelope"
+        "400":
           description: Invalid block IDs or empty block sequence (VALIDATION).
-        '423':
+        "423":
           description: Contest timer is not currently running for Round 1 (ROUND_NOT_RUNNING).
 
   /attempts/{id}:
@@ -279,17 +278,17 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Attempt created or unlocked successfully.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AttemptResponseEnvelope'
-        '402':
+                $ref: "#/components/schemas/AttemptResponseEnvelope"
+        "402":
           description: Insufficient balance for question buy_in (INSUFFICIENT_BALANCE).
-        '409':
+        "409":
           description: Question attempt already unlocked or active (ALREADY_EXISTS).
-        '423':
+        "423":
           description: Contest timer is not currently running for this round (ROUND_NOT_RUNNING).
 
   /runcode:
@@ -305,9 +304,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SubmissionRequest'
+              $ref: "#/components/schemas/SubmissionRequest"
       responses:
-        '200':
+        "200":
           description: Sample execution completed.
 
   /runcustom:
@@ -323,9 +322,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CustomSubmissionRequest'
+              $ref: "#/components/schemas/CustomSubmissionRequest"
       responses:
-        '200':
+        "200":
           description: Custom execution completed.
 
   /question/round:
@@ -337,7 +336,7 @@ paths:
       security:
         - CookieAuth: []
       responses:
-        '200':
+        "200":
           description: List of questions retrieved.
 
   /question/{id}/blocks:
@@ -356,7 +355,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Visual blocks retrieved.
 
   /question/{id}/testcases/public:
@@ -375,7 +374,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Public testcases retrieved.
 
   /question:
@@ -387,7 +386,7 @@ paths:
       security:
         - CookieAuth: []
       responses:
-        '200':
+        "200":
           description: Questions list retrieved.
 
     post:
@@ -402,9 +401,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/QuestionRequest'
+              $ref: "#/components/schemas/QuestionRequest"
       responses:
-        '200':
+        "200":
           description: Question created.
 
   /question/{id}:
@@ -423,9 +422,9 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Question details retrieved.
-        '404':
+        "404":
           description: Question not found.
 
     put:
@@ -447,9 +446,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/QuestionRequest'
+              $ref: "#/components/schemas/QuestionRequest"
       responses:
-        '200':
+        "200":
           description: Question updated.
 
     delete:
@@ -467,7 +466,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Question deleted.
 
   /question/{id}/bounty/activate:
@@ -485,7 +484,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Bounty activated.
 
   /question/{id}/bounty/deactivate:
@@ -503,7 +502,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Bounty deactivated.
 
   /question/{id}/testcases:
@@ -522,7 +521,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Testcases list retrieved.
 
   /testcase:
@@ -537,9 +536,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TestcaseRequest'
+              $ref: "#/components/schemas/TestcaseRequest"
       responses:
-        '200':
+        "200":
           description: Testcase created.
 
   /testcase/{id}:
@@ -557,7 +556,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Testcase retrieved.
 
     put:
@@ -578,9 +577,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/TestcaseUpdateRequest'
+              $ref: "#/components/schemas/TestcaseUpdateRequest"
       responses:
-        '200':
+        "200":
           description: Testcase updated.
 
     delete:
@@ -597,7 +596,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: Testcase deleted.
 
   /admin/session:
@@ -609,7 +608,7 @@ paths:
       security:
         - CookieAuth: []
       responses:
-        '200':
+        "200":
           description: Admin session active.
 
   /admin/users:
@@ -620,7 +619,7 @@ paths:
       security:
         - CookieAuth: []
       responses:
-        '200':
+        "200":
           description: Users list retrieved.
 
   /admin/users/{id}/ban:
@@ -638,7 +637,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: User banned.
 
   /admin/users/{id}/unban:
@@ -656,7 +655,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: User unbanned.
 
   /admin/users/{id}/upgrade:
@@ -677,9 +676,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpgradeUserRequest'
+              $ref: "#/components/schemas/UpgradeUserRequest"
       responses:
-        '200':
+        "200":
           description: User upgraded.
 
   /admin/users/upgrade-all:
@@ -693,9 +692,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpgradeAllUsersRequest'
+              $ref: "#/components/schemas/UpgradeAllUsersRequest"
       responses:
-        '200':
+        "200":
           description: All non-banned users upgraded.
 
   /admin/users/{id}/submissions:
@@ -713,7 +712,7 @@ paths:
             type: string
             format: uuid
       responses:
-        '200':
+        "200":
           description: User submissions retrieved.
 
   /admin/leaderboard:
@@ -724,7 +723,7 @@ paths:
       security:
         - CookieAuth: []
       responses:
-        '200':
+        "200":
           description: Leaderboard retrieved.
 
   /admin/analytics:
@@ -735,7 +734,7 @@ paths:
       security:
         - CookieAuth: []
       responses:
-        '200':
+        "200":
           description: Analytics retrieved.
 
   /admin/setTime:
@@ -750,9 +749,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SetTimeRequest'
+              $ref: "#/components/schemas/SetTimeRequest"
       responses:
-        '200':
+        "200":
           description: Contest timer configured.
 
   /admin/updateTime:
@@ -767,9 +766,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateTimeRequest'
+              $ref: "#/components/schemas/UpdateTimeRequest"
       responses:
-        '200':
+        "200":
           description: Contest timer updated.
 
   /admin/startRound:
@@ -780,7 +779,7 @@ paths:
       security:
         - CookieAuth: []
       responses:
-        '200':
+        "200":
           description: Timer started.
 
   /admin/resetRound:
@@ -791,7 +790,7 @@ paths:
       security:
         - CookieAuth: []
       responses:
-        '200':
+        "200":
           description: Timer reset.
 
   /judge0callback:
@@ -801,7 +800,7 @@ paths:
       summary: Judge0 async execution callback
       description: Internal callback endpoint invoked by Judge0 upon testcase compilation/execution completion.
       responses:
-        '200':
+        "200":
           description: Callback processed and enqueued for async persistence.
 
 components:
@@ -880,7 +879,7 @@ components:
         questions:
           type: array
           items:
-            $ref: '#/components/schemas/DashboardQuestion'
+            $ref: "#/components/schemas/DashboardQuestion"
 
     DashboardResponseEnvelope:
       type: object
@@ -891,7 +890,7 @@ components:
         message:
           type: string
         data:
-          $ref: '#/components/schemas/DashboardResponse'
+          $ref: "#/components/schemas/DashboardResponse"
 
     TimerResponse:
       type: object
@@ -920,7 +919,7 @@ components:
         message:
           type: string
         data:
-          $ref: '#/components/schemas/TimerResponse'
+          $ref: "#/components/schemas/TimerResponse"
 
     SubmissionRequest:
       type: object
@@ -987,7 +986,7 @@ components:
         message:
           type: string
         data:
-          $ref: '#/components/schemas/SubmitVisualSolutionResponse'
+          $ref: "#/components/schemas/SubmitVisualSolutionResponse"
 
     AttemptResponse:
       type: object
@@ -1016,7 +1015,7 @@ components:
         message:
           type: string
         data:
-          $ref: '#/components/schemas/AttemptResponse'
+          $ref: "#/components/schemas/AttemptResponse"
 
     TestcaseResult:
       type: object
@@ -1054,7 +1053,7 @@ components:
         testcases:
           type: array
           items:
-            $ref: '#/components/schemas/TestcaseResult'
+            $ref: "#/components/schemas/TestcaseResult"
 
     ResultResponseEnvelope:
       type: object
@@ -1064,7 +1063,7 @@ components:
         message:
           type: string
         data:
-          $ref: '#/components/schemas/ResultResponse'
+          $ref: "#/components/schemas/ResultResponse"
 
     QuestionRequest:
       type: object
