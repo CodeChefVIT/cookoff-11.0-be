@@ -16,6 +16,8 @@ func RegisterRoutes(e *echo.Echo) {
 	// Standard operational routes
 	e.GET("/health", controllers.HealthCheck)
 	e.GET("/docs", controllers.ServeDocs)
+	e.File("/docs/docs.yaml", "docs/docs.yaml")
+	e.File("/docs.yaml", "docs/docs.yaml")
 
 	// judge0 callback req
 	e.PUT("/judge0callback", controllers.Judge0Callback)

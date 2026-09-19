@@ -2,14 +2,17 @@ package controllers
 
 import (
 	"net/http"
+	"os"
 
-	"github.com/MarceloPetrucio/go-scalar-api-reference"
+	scalar "github.com/MarceloPetrucio/go-scalar-api-reference"
 	"github.com/labstack/echo/v4"
 )
 
 func ServeDocs(c echo.Context) error {
+	specBytes, _ := os.ReadFile("docs/docs.yaml")
 	content, err := scalar.ApiReferenceHTML(&scalar.Options{
-		SpecURL: "./docs/docs.yaml",
+		SpecURL:     "/docs/docs.yaml",
+		SpecContent: string(specBytes),
 		CustomOptions: scalar.CustomOptions{
 			PageTitle: "Cookoff 11.0 Backend API Docs",
 		},
