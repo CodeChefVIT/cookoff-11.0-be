@@ -51,6 +51,7 @@ Root-level middleware: global rate limiter (10 req/s) → public routes → `api
 | POST/PUT/DELETE     | `/testcase[/:id]`                                | JWT + Admin             | testcase CRUD              |
 | GET                 | `/admin/users`                                   | JWT + Admin             | `GetAllUsers`              |
 | POST                | `/admin/users/:id/ban` \| `/unban` \| `/upgrade` | JWT + Admin             | user moderation            |
+| POST                | `/admin/users/upgrade-all`                       | JWT + Admin             | `UpgradeAllUsers`          |
 | GET                 | `/admin/users/:id/submissions`                   | JWT + Admin             | `GetUserSubmissions`       |
 | GET                 | `/admin/leaderboard`                             | JWT + Admin             | `GetLeaderboard`           |
 | GET                 | `/admin/analytics`                               | JWT + Admin             | `GetAnalytics`             |

@@ -18,6 +18,11 @@ type UpgradeUserRequest struct {
 	Role           *string `json:"role"`
 }
 
+type UpgradeAllUsersRequest struct {
+	TargetRound *int32 `json:"target_round"`
+	Round       *int32 `json:"round"`
+}
+
 type UserSubmissionResponse struct {
 	ID              string  `json:"id"`
 	QuestionID      string  `json:"question_id"`
@@ -67,15 +72,10 @@ type AnalyticsResponse struct {
 
 type SetTimeRequest struct {
 	Round           *int32 `json:"round"`
-	Duration        *int64 `json:"duration"`
-	DurationMinutes *int64 `json:"duration_minutes"`
 	DurationSeconds *int64 `json:"duration_seconds"`
 }
 
 type UpdateTimeRequest struct {
-	Duration          *int64 `json:"duration"`
-	AdditionalTime    *int64 `json:"additional_time"`
-	AdditionalMinutes *int64 `json:"additional_minutes"`
 	AdditionalSeconds *int64 `json:"additional_seconds"`
 }
 

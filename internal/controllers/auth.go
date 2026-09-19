@@ -14,6 +14,7 @@ import (
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/auth"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
@@ -43,6 +44,7 @@ func (ac *AuthController) StartGoogle(c echo.Context) error {
 		"response_type": {"code"},
 		"scope":         {"openid email profile"},
 		"state":         {state},
+		"hd":            {utils.Config.AllowedEmailDomain},
 	}
 	return c.Redirect(http.StatusFound, utils.Config.GoogleAuthURL+"?"+values.Encode())
 }
@@ -52,29 +54,38 @@ func (ac *AuthController) GoogleCallback(c echo.Context) error {
 	validState := auth.ValidateState(stateCookie, c.QueryParam("state"))
 	c.SetCookie(auth.ClearStateCookie())
 	if err != nil || !validState || c.QueryParam("code") == "" {
-		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Invalid OAuth callback", nil))
+		return loginFailed(c, "oauth_failed")
 	}
 	identity, err := ac.googleIdentity(c.Request().Context(), c.QueryParam("code"))
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Google authentication failed", nil))
+		logging.Errorf("Google authentication failed: %v", err)
+		return loginFailed(c, "oauth_failed")
+	}
+	if utils.Config.AllowedEmailDomain != "" {
+		if !strings.HasSuffix(identity.Email, "@"+utils.Config.AllowedEmailDomain) {
+			logging.Infof("OAuth domain rejection for email: %s", identity.Email)
+			return loginFailed(c, "not_vit_student")
+		}
 	}
 	user, err := ac.findUser(c.Request().Context(), identity)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Account is not registered", nil))
+			return loginFailed(c, "not_registered")
 		}
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Unable to establish session", nil))
+		logging.Errorf("OAuth find user: %v", err)
+		return loginFailed(c, "server_error")
 	}
 	if user.IsBanned {
 		for _, cookie := range auth.ClearSessionCookies() {
 			c.SetCookie(cookie)
 		}
 
-		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Account is banned", nil))
+		return loginFailed(c, "banned")
 	}
 	cookies, err := auth.SessionCookies(auth.User{ID: user.ID.String(), Email: user.Email, Role: user.Role})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Unable to establish session", nil))
+		logging.Errorf("OAuth session cookies: %v", err)
+		return loginFailed(c, "server_error")
 	}
 	for _, cookie := range cookies {
 		c.SetCookie(cookie)
@@ -101,7 +112,7 @@ func (ac *AuthController) RefreshToken(c echo.Context) error {
 	}
 	cookies, err := auth.SessionCookies(auth.User{ID: user.ID.String(), Email: user.Email, Role: user.Role})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Unable to refresh session", nil))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Unable to refresh session", dto.CodeInternal))
 	}
 	for _, sessionCookie := range cookies {
 		c.SetCookie(sessionCookie)
@@ -121,10 +132,27 @@ func (ac *AuthController) unauthorized(c echo.Context) error {
 		c.SetCookie(cookie)
 	}
 
-	return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Unauthorized", nil))
+	return c.JSON(http.StatusUnauthorized, dto.NewCodedError("Unauthorized", dto.CodeUnauthorized))
 }
 
 type googleIdentity struct{ Subject, Email, Name string }
+
+// googleBool accepts both JSON booleans and Google tokeninfo's string-encoded "true"/"false".
+type googleBool bool
+
+func (b *googleBool) UnmarshalJSON(data []byte) error {
+	var value bool
+	if err := json.Unmarshal(data, &value); err == nil {
+		*b = googleBool(value)
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+	*b = googleBool(strings.EqualFold(text, "true"))
+	return nil
+}
 
 func (ac *AuthController) googleIdentity(ctx context.Context, code string) (googleIdentity, error) {
 	values := url.Values{"code": {code}, "client_id": {utils.Config.GoogleClientID}, "client_secret": {utils.Config.GoogleClientSecret}, "redirect_uri": {utils.Config.GoogleRedirectURI}, "grant_type": {"authorization_code"}}
@@ -161,17 +189,17 @@ func (ac *AuthController) googleIdentity(ctx context.Context, code string) (goog
 		return googleIdentity{}, fmt.Errorf("invalid ID token")
 	}
 	var info struct {
-		Subject       string `json:"sub"`
-		Email         string `json:"email"`
-		EmailVerified bool   `json:"email_verified"`
-		Name          string `json:"name"`
-		Audience      string `json:"aud"`
-		Issuer        string `json:"iss"`
+		Subject       string     `json:"sub"`
+		Email         string     `json:"email"`
+		EmailVerified googleBool `json:"email_verified"`
+		Name          string     `json:"name"`
+		Audience      string     `json:"aud"`
+		Issuer        string     `json:"iss"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&info); err != nil {
 		return googleIdentity{}, err
 	}
-	if info.Subject == "" || info.Email == "" || !info.EmailVerified || info.Audience != utils.Config.GoogleClientID || (info.Issuer != "accounts.google.com" && info.Issuer != "https://accounts.google.com") {
+	if info.Subject == "" || info.Email == "" || !bool(info.EmailVerified) || info.Audience != utils.Config.GoogleClientID || (info.Issuer != "accounts.google.com" && info.Issuer != "https://accounts.google.com") {
 		return googleIdentity{}, fmt.Errorf("unverified Google identity")
 	}
 	return googleIdentity{Subject: info.Subject, Email: info.Email, Name: info.Name}, nil
@@ -189,6 +217,9 @@ func (ac *AuthController) findUser(ctx context.Context, identity googleIdentity)
 	// No account claimed by this Google identity yet: check for a
 	// pre-seeded account matching the verified email and link it.
 	user, err = ac.queries.GetUserByEmail(ctx, identity.Email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ac.createUser(ctx, identity)
+	}
 	if err != nil {
 		return sqlc.User{}, err
 	}
@@ -197,6 +228,47 @@ func (ac *AuthController) findUser(ctx context.Context, identity googleIdentity)
 		return sqlc.User{}, err
 	}
 	return linked, nil
+}
+
+// newUserBalance is the starting balance of an account created on first login.
+const newUserBalance = 2000
+
+// createUser registers a first-time Google sign-in that has no seeded
+// account. The email doubles as the reg no until an organiser sets it. Two
+// racing first logins insert once; the loser reads the winner's row.
+func (ac *AuthController) createUser(ctx context.Context, identity googleIdentity) (sqlc.User, error) {
+	balance, err := utils.Float64ToNumeric(newUserBalance)
+	if err != nil {
+		return sqlc.User{}, err
+	}
+	name := strings.TrimSpace(identity.Name)
+	if name == "" {
+		name, _, _ = strings.Cut(identity.Email, "@")
+	}
+	googleID := identity.Subject
+	user, err := ac.queries.CreateUserFromGoogle(ctx, sqlc.CreateUserFromGoogleParams{
+		ID:       uuid.New(),
+		Email:    identity.Email,
+		RegNo:    identity.Email,
+		Name:     name,
+		GoogleID: &googleID,
+		Balance:  balance,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ac.queries.GetUserByGoogleID(ctx, &googleID)
+	}
+	if err != nil {
+		return sqlc.User{}, err
+	}
+	logging.Infof("Created user %s on first login", user.ID)
+	return user, nil
+}
+
+// loginFailed sends the browser back to the portal's login page with a
+// reason code instead of stranding it on a JSON error from the API domain.
+func loginFailed(c echo.Context, reason string) error {
+	target := strings.TrimRight(utils.Config.FrontendURL, "/") + "/login?" + url.Values{"error": {reason}}.Encode()
+	return c.Redirect(http.StatusFound, target)
 }
 
 func redirectURL(role string) string {

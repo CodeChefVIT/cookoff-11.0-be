@@ -16,6 +16,8 @@ func RegisterRoutes(e *echo.Echo) {
 	// Standard operational routes
 	e.GET("/health", controllers.HealthCheck)
 	e.GET("/docs", controllers.ServeDocs)
+	e.File("/docs/docs.yaml", "docs/docs.yaml")
+	e.File("/docs.yaml", "docs/docs.yaml")
 
 	// judge0 callback req
 	e.PUT("/judge0callback", controllers.Judge0Callback)
@@ -27,7 +29,9 @@ func RegisterRoutes(e *echo.Echo) {
 	e.GET("/api/v1/auth/google", authController.StartGoogle)
 	e.GET("/api/v1/auth/google/callback", authController.GoogleCallback)
 	e.POST("/refreshToken", authController.RefreshToken)
-	e.POST("/logout", authController.Logout, middlewares.VerifyJWTMiddleware)
+	// No JWT check: logging out must clear the cookies even once the access
+	// token has expired.
+	e.POST("/logout", authController.Logout)
 
 	// submit & result routes
 	e.POST("/submit", controllers.SubmitCode, authenticated...)
@@ -47,6 +51,7 @@ func RegisterRoutes(e *echo.Echo) {
 	questionRoutes.GET("/:id/testcases/public", controllers.NewTestcaseController(queries).ListPublic)
 
 	adminQuestionRoutes := e.Group("/question", append(authenticated, middlewares.AdminOnly)...)
+	adminQuestionRoutes.GET("", questionController.ListAll)
 	adminQuestionRoutes.POST("", questionController.Create)
 	adminQuestionRoutes.PUT("/:id", questionController.Update)
 	adminQuestionRoutes.DELETE("/:id", questionController.Delete)
@@ -71,6 +76,7 @@ func RegisterRoutes(e *echo.Echo) {
 	adminRoutes.POST("/users/:id/ban", adminController.BanUser)
 	adminRoutes.POST("/users/:id/unban", adminController.UnbanUser)
 	adminRoutes.POST("/users/:id/upgrade", adminController.UpgradeUser)
+	adminRoutes.POST("/users/upgrade-all", adminController.UpgradeAllUsers)
 	adminRoutes.GET("/users/:id/submissions", adminController.GetUserSubmissions)
 	adminRoutes.GET("/leaderboard", adminController.GetLeaderboard)
 	adminRoutes.GET("/analytics", adminController.GetAnalytics)

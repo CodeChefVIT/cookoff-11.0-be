@@ -3,7 +3,7 @@ package controllers
 import (
 	"net/http"
 
-	"github.com/MarceloPetrucio/go-scalar-api-reference"
+	scalar "github.com/MarceloPetrucio/go-scalar-api-reference"
 	"github.com/labstack/echo/v4"
 )
 

@@ -18,9 +18,11 @@ type Judge0CallbackPayload struct {
 	StdOut  *string `json:"stdout"`
 	StdErr  *string `json:"stderr"`
 	Message *string `json:"message"`
-	Time    string  `json:"time"`   // seconds, as a string e.g. "0.045"
-	Memory  int     `json:"memory"` // KB
-	Status  struct {
+	// CompileOutput is the compiler's error text; only set on a compilation error.
+	CompileOutput *string `json:"compile_output,omitempty"`
+	Time          string  `json:"time"`   // seconds, as a string e.g. "0.045"
+	Memory        int     `json:"memory"` // KB
+	Status        struct {
 		ID          int    `json:"id"`
 		Description string `json:"description"`
 	} `json:"status"`

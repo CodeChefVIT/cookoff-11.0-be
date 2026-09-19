@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
 	"github.com/google/uuid"
@@ -13,32 +13,51 @@ import (
 
 type dashboardQueries interface {
 	GetUserByID(context.Context, uuid.UUID) (sqlc.User, error)
-	ListDashboardQuestions(context.Context, uuid.UUID) ([]sqlc.ListDashboardQuestionsRow, error)
+	GetDashboardQuestions(context.Context, uuid.UUID) ([]sqlc.GetDashboardQuestionsRow, error)
 }
 
+// Dashboard is the player's profile plus their current round's questions
+// with per-question attempt status. The portal also uses it as its session
+// probe, so it stays at two cheap queries.
 func Dashboard(q dashboardQueries) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		id, e := userID(c)
 		if e != nil {
-			return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("unauthorized", nil))
+			return c.JSON(http.StatusUnauthorized, dto.NewCodedError("Unauthorized", dto.CodeUnauthorized))
 		}
-		u, e := q.GetUserByID(c.Request().Context(), id)
+		ctx := c.Request().Context()
+
+		u, e := q.GetUserByID(ctx, id)
 		if e != nil {
 			logging.Errorf("Dashboard error loading user %s: %v", id, e)
-			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("failed to load dashboard", nil))
+			return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to load dashboard", dto.CodeInternal))
 		}
-		rows, e := q.ListDashboardQuestions(c.Request().Context(), id)
+
+		questionsRows, e := q.GetDashboardQuestions(ctx, id)
 		if e != nil {
 			logging.Errorf("Dashboard error loading questions for user %s: %v", id, e)
-			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("failed to load dashboard", nil))
+			return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to load dashboard", dto.CodeInternal))
 		}
-		d := dto.DashboardResponse{ID: u.ID, Name: u.Name, Email: u.Email, RoundQualified: u.RoundQualified, Questions: make([]dto.DashboardQuestion, len(rows)), AttemptTotals: map[string]int{"available": 0, "bought": 0, "answered": 0}}
-		d.Balance = numericText(u.Balance)
-		d.Score = numericText(u.Score)
-		for i, r := range rows {
-			d.Questions[i] = dto.DashboardQuestion{ID: r.ID, Title: r.Title, Points: r.Points, Round: r.Round, AttemptStatus: r.AttemptStatus}
-			d.AttemptTotals[r.AttemptStatus]++
+
+		questions := make([]dto.DashboardQuestion, len(questionsRows))
+		for i, qRow := range questionsRows {
+			questions[i] = dto.DashboardQuestion{
+				ID:            qRow.ID,
+				Title:         qRow.Title,
+				Points:        qRow.Points,
+				Round:         qRow.Round,
+				AttemptStatus: qRow.AttemptStatus,
+			}
 		}
-		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Dashboard retrieved", d))
+
+		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Dashboard retrieved", dto.DashboardResponse{
+			ID:             u.ID,
+			Name:           u.Name,
+			Email:          u.Email,
+			Balance:        numericText(u.Balance),
+			Score:          numericText(u.Score),
+			RoundQualified: u.RoundQualified,
+			Questions:      questions,
+		}))
 	}
 }

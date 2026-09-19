@@ -87,12 +87,12 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 		return fmt.Errorf("convert memory: %w", err)
 	}
 
-	// Placeholder scoring: 1 point for a passing testcase, 0 otherwise.
-	// The schema has no per-testcase weighting yet (testcases table has no
-	// points column) -- revisit this if/when per-testcase weights are added.
+	// A passing testcase earns its share of the question's points. This is
+	// informational (shown in the admin panel); the score itself is computed
+	// once, in finalizeSubmission. A failed lookup records 0, never a guess.
 	var pointsAwarded int32
 	if status == utils.Judge0Accepted.GetJudge0Status() {
-		pointsAwarded = 1
+		pointsAwarded = testcaseShare(ctx, submissionID)
 	}
 
 	description := payload.Status.Description
@@ -119,7 +119,7 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 		PointsAwarded: pointsAwarded,
 		Status:        status,
 		Description:   &description,
-	}); createErr != nil {
+	}); createErr != nil && !errors.Is(createErr, pgx.ErrNoRows) {
 		_ = tx.Rollback(ctx)
 		return fmt.Errorf("create submission result: %w", createErr)
 	}
@@ -141,23 +141,17 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 	}
 
 	// Step 4: this was the last outstanding testcase. Aggregate every
-	// submission_results row into the parent submissions row in a dedicated final transaction.
-	finalTx, err := db.DBPool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin final tx: %w", err)
+	// submission_results row into the parent submissions row.
+	// Pre-fetches read-only data outside the FOR UPDATE lock via runFinalize.
+	result, err := runFinalize(ctx, submissionID)
+	if errors.Is(err, errAlreadyFinalized) {
+		// A redelivered task for a finished submission: the verdict is already
+		// cached and published, and overwriting it would blank it out.
+		return nil
 	}
-	defer func() { _ = finalTx.Rollback(ctx) }()
-	finalQtx := db.Queries.WithTx(finalTx)
-
-	// CHANGE #1: finalizeSubmission now also returns the built result so we
-	// can cache it below, instead of returning only an error.
-	result, err := finalizeSubmission(ctx, finalQtx, submissionID)
 	if err != nil {
+		restoreTokenAfterFailure(ctx, payload.Token, submissionIDStr, testcaseIDStr, submissionID, err)
 		return fmt.Errorf("finalize submission: %w", err)
-	}
-
-	if err := finalTx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit final tx: %w", err)
 	}
 
 	// CHANGE #2: cache the finished result in Redis, only after the commit
@@ -167,16 +161,30 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 		// a Postgres fallback if this is missing.
 		logging.Warnf("submission %s: failed to cache result: %v", submissionID, cacheErr)
 	}
+
+	// Wake any GET /result long-poll holding for this verdict. Missing it only
+	// delays the reply to GetResult's fallback DB check.
+	if pubErr := utils.PublishSubmissionDone(ctx, submissionID.String()); pubErr != nil {
+		logging.Warnf("submission %s: failed to publish completion: %v", submissionID, pubErr)
+	}
 	return nil
 }
 
 // finalizeSubmission runs once per submission, exactly when the last
 // testcase's callback arrives. It now returns the built dto.ResultResponse
 // alongside the error, so the caller can cache it in Redis after commit.
-func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uuid.UUID) (dto.ResultResponse, error) {
+func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uuid.UUID, question sqlc.GetQuestionByIDRow) (dto.ResultResponse, error) {
 	submission, err := qtx.GetSubmissionForUpdate(ctx, submissionID)
 	if err != nil {
 		return dto.ResultResponse{}, fmt.Errorf("get submission for update: %w", err)
+	}
+
+	if submission.Status != nil &&
+		*submission.Status != utils.Judge0InQueue.GetJudge0Status() &&
+		*submission.Status != utils.Judge0Processing.GetJudge0Status() {
+		logging.Infof("submission %s: already finalized with status %q -- skipping",
+			submissionID, *submission.Status)
+		return dto.ResultResponse{}, errAlreadyFinalized
 	}
 
 	results, err := qtx.GetSubmissionResults(ctx, submissionID)
@@ -187,14 +195,10 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		return dto.ResultResponse{}, fmt.Errorf("no submission results found for submission %s", submissionID)
 	}
 
-	testcases, err := qtx.GetAllTestCasesByQuestion(ctx, submission.QuestionID)
-	if err != nil {
-		return dto.ResultResponse{}, fmt.Errorf("get testcases for question: %w", err)
-	}
-	if len(results) != len(testcases) {
-		return dto.ResultResponse{}, fmt.Errorf("incomplete results for submission %s: got %d, expected %d",
-			submissionID, len(results), len(testcases))
-	}
+	// Finalize only runs once the submission's token set is empty, i.e. every
+	// testcase sent to Judge0 has reported back and been committed. Comparing
+	// against the question's *current* testcases instead left a submission
+	// pending forever whenever an admin added or removed a testcase mid-round.
 
 	var passed, failed int32
 	var maxRuntime, maxMemory float64
@@ -285,11 +289,6 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		SubmissionTime: submission.SubmissionTime.Time.String(),
 		Description:    overallDesc,
 		Testcases:      testcaseResults,
-	}
-
-	question, err := qtx.GetQuestionByID(ctx, submission.QuestionID)
-	if err != nil {
-		return dto.ResultResponse{}, fmt.Errorf("get question: %w", err)
 	}
 
 	// Calculate total testcases and compute partial score safely (avoid division by zero NaN)
@@ -423,4 +422,71 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	logging.Infof("submission %s finalized: user=%s question=%s reward=%.2f partial_score=%.2f",
 		submissionID, submission.UserID, submission.QuestionID, reward, partialScore)
 	return response, nil
+}
+
+// errAlreadyFinalized means the submission already has its verdict.
+var errAlreadyFinalized = errors.New("submission already finalized")
+
+// testcaseShare is one testcase's share of the question's points, or 0 when
+// it cannot be worked out.
+func testcaseShare(ctx context.Context, submissionID uuid.UUID) int32 {
+	sub, err := db.Queries.GetSubmissionByID(ctx, submissionID)
+	if err != nil {
+		return 0
+	}
+	question, err := db.Queries.GetQuestionByID(ctx, sub.QuestionID)
+	if err != nil {
+		return 0
+	}
+	testcases, err := db.Queries.GetAllTestCasesByQuestion(ctx, sub.QuestionID)
+	if err != nil || len(testcases) == 0 {
+		return 0
+	}
+	return question.Points / int32(len(testcases)) // #nosec G115
+}
+
+func runFinalize(ctx context.Context, submissionID uuid.UUID) (dto.ResultResponse, error) {
+	// Pre-fetch read-only data outside the locking transaction
+	sub, err := db.Queries.GetSubmissionByID(ctx, submissionID)
+	if err != nil {
+		return dto.ResultResponse{}, fmt.Errorf("get submission for pre-fetch: %w", err)
+	}
+
+	question, err := db.Queries.GetQuestionByID(ctx, sub.QuestionID)
+	if err != nil {
+		return dto.ResultResponse{}, fmt.Errorf("get question: %w", err)
+	}
+
+	finalTx, err := db.DBPool.Begin(ctx)
+	if err != nil {
+		return dto.ResultResponse{}, fmt.Errorf("begin final tx: %w", err)
+	}
+	defer func() { _ = finalTx.Rollback(ctx) }()
+
+	result, err := finalizeSubmission(ctx, db.Queries.WithTx(finalTx), submissionID, question)
+	if err != nil {
+		return dto.ResultResponse{}, err
+	}
+
+	if err := finalTx.Commit(ctx); err != nil {
+		return dto.ResultResponse{}, fmt.Errorf("commit final tx: %w", err)
+	}
+
+	return result, nil
+}
+
+func restoreTokenAfterFailure(ctx context.Context, token, submissionIDStr, testcaseIDStr string, submissionID uuid.UUID, cause error) {
+	restoreCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
+	if err := utils.RestoreToken(restoreCtx, token, submissionIDStr, testcaseIDStr); err != nil {
+		logging.Errorf(
+			"CRITICAL: submission %s will stay pending -- could not restore judge0 token %q after a finalize failure (restore error: %v) (original error: %v)",
+			submissionID, token, err, cause,
+		)
+		return
+	}
+
+	logging.Warnf("submission %s: finalize failed (%v) -- restored token %q so the retry can resolve it",
+		submissionID, cause, token)
 }

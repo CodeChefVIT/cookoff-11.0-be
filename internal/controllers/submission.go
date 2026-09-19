@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -20,165 +21,147 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// do logging
 func SubmitCode(c echo.Context) error {
 	var req dto.SubmissionRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
+		return c.JSON(http.StatusBadRequest, dto.NewCodedError("Invalid request body", dto.CodeValidation))
 	}
-
 	if err := c.Validate(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
+		return c.JSON(http.StatusBadRequest, dto.NewCodedError(validationMessage(err), dto.CodeValidation))
+	}
+	if !utils.IsSupportedLanguage(req.LanguageID) {
+		return c.JSON(http.StatusBadRequest, dto.NewCodedError("Unsupported language", dto.CodeValidation))
 	}
 
-	//get user id
-	userIDStr, ok := c.Get(middlewares.UserIDKey).(string)
-	if !ok || userIDStr == "" {
-		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Unauthorized", nil))
-	}
-
-	// userID is set by middlewares.VerifyJWTMiddleware (applied to this route
-	// in router.go), which validates the JWT cookie and calls
-	// c.Set(middlewares.UserIDKey, claims.UserID) before this handler runs.
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Invalid user id", nil))
+	user, ok := middlewares.CurrentUser(c)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, dto.NewCodedError("Unauthorized", dto.CodeUnauthorized))
 	}
 
 	questionID, err := uuid.Parse(req.QuestionID)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
+		return c.JSON(http.StatusBadRequest, dto.NewCodedError("Invalid question ID", dto.CodeValidation))
 	}
 
 	ctx := c.Request().Context()
 
-	user, err := db.Queries.GetUserByID(ctx, userID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("User not found", nil))
-		}
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch user", nil))
-	}
-
 	question, err := db.Queries.GetQuestionByID(ctx, questionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return c.JSON(http.StatusNotFound, dto.NewErrorResponse("Question not found", nil))
+			return c.JSON(http.StatusNotFound, dto.NewCodedError("Question not found", dto.CodeNotFound))
 		}
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch question", nil))
+		logging.Errorf("submit: get question %s: %v", questionID, err)
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to fetch question", dto.CodeInternal))
+	}
+
+	if question.Round == 1 || question.QType == "visual" {
+		return c.JSON(http.StatusBadRequest, dto.NewCodedError("Code submission is only available for Round 2 and Round 3 questions", dto.CodeValidation))
+	}
+
+	if !ensureRoundRunning(c, question.Round) {
+		return nil
 	}
 
 	if user.RoundQualified != question.Round {
-		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("User not qualified for this round", nil))
+		return c.JSON(http.StatusForbidden, dto.NewCodedError("User not qualified for this round", dto.CodeNotQualified))
 	}
 
-	// The buy-in/reward economy applies to every round's code questions, not
-	// just the visual one — mirrors the same check submit_round1.go already
-	// performs for visual submissions. Without this, a user can skip
-	// POST /attempts/:id entirely and still collect the reward on a correct
-	// submission, since EnsureAttempt would otherwise silently backfill an
-	// attempt row at result-finalize time.
-	attempt, err := db.Queries.GetAttempt(ctx, sqlc.GetAttemptParams{
-		UserID:     userID,
-		QuestionID: questionID,
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Question not purchased — buy this question before submitting", nil))
+	if question.Round == 2 {
+		attempt, attemptErr := db.Queries.GetAttempt(ctx, sqlc.GetAttemptParams{UserID: user.ID, QuestionID: questionID})
+		if attemptErr != nil && !errors.Is(attemptErr, pgx.ErrNoRows) {
+			logging.Errorf("submit: get attempt: %v", attemptErr)
+			return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to check purchase", dto.CodeInternal))
 		}
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
-	}
-	if !attemptAllowsSubmission(attempt.Status) {
-		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Question not purchased — buy this question before submitting", nil))
+		if attemptErr != nil || (attempt.Status != "bought" && attempt.Status != "answered") {
+			return c.JSON(http.StatusForbidden, dto.NewCodedError("Question not purchased — buy this question before submitting", dto.CodeNotPurchased))
+		}
 	}
 
-	submissionID := uuid.New()
-	logging.Infof("Created submission ID: %v", submissionID)
-
-	//fetch testcases from db
 	testcases, err := db.Queries.GetAllTestCasesByQuestion(ctx, questionID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
+		logging.Errorf("submit: get testcases for %s: %v", questionID, err)
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to fetch testcases", dto.CodeInternal))
 	}
-
-	//zero testcase validation
 	if len(testcases) == 0 {
-		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse("No testcases found for the question", nil))
+		logging.Errorf("submit: question %s has no testcases", questionID)
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("This question has no testcases yet", dto.CodeInternal))
 	}
 
-	//make payload
 	payload, err := submission.CreateBatchSubmissionPayload(req.SourceCode, req.LanguageID, testcases)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
+		logging.Errorf("submit: build payload: %v", err)
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to prepare submission", dto.CodeInternal))
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-
-	//send the payload
-	resp, err := submission.SendBatchSubmissionPayload(client, payload)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse(err.Error(), nil))
-	}
-
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusCreated {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failure at Judge0", nil))
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Error reading response body", nil))
-	}
-
-	type Token struct {
-		Token string `json:"token"`
-	}
-
-	var tokens []Token
-	err = json.Unmarshal(body, &tokens)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to decode body", nil))
-	}
-
-	if len(tokens) != len(testcases) {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Judge0 returned a different number of tokens than testcases submitted", nil))
-	}
-
-	tokenToTestcase := make(map[string]string, len(tokens))
-	for i, t := range tokens {
-		if t.Token == "" {
-			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Judge0 returned an empty token for one or more testcases", nil))
-		}
-		tokenToTestcase[t.Token] = testcases[i].ID.String()
-	}
-
-	if err = utils.CacheTokens(ctx, submissionID.String(), tokenToTestcase); err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to cache submission tokens", nil))
-	}
-
+	// The row goes in before Judge0 hears about it, so a callback can never
+	// arrive for a submission that does not exist yet.
+	submissionID := uuid.New()
 	statusInQueue := utils.Judge0InQueue.GetJudge0Status()
-	err = db.Queries.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
-		UserID:     userID,
+	if err = db.Queries.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
+		UserID:     user.ID,
 		ID:         submissionID,
 		QuestionID: questionID,
 		SourceCode: req.SourceCode,
 		LanguageID: int32(req.LanguageID), // #nosec G115
 		Status:     &statusInQueue,
-	})
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to create submission in database", nil))
+	}); err != nil {
+		logging.Errorf("submit: create submission: %v", err)
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to create submission", dto.CodeInternal))
 	}
 
+	tokenToTestcase, err := sendBatch(payload, testcases)
+	if err == nil {
+		err = utils.CacheTokens(ctx, submissionID.String(), tokenToTestcase)
+	}
+	if err != nil {
+		logging.Errorf("submit %s: %v", submissionID, err)
+		// Nobody has seen this id yet; drop the row rather than leave it pending.
+		if delErr := db.Queries.DeleteSubmission(context.WithoutCancel(ctx), submissionID); delErr != nil {
+			logging.Errorf("submit %s: delete after failure: %v", submissionID, delErr)
+		}
+		return c.JSON(http.StatusBadGateway, dto.NewCodedError("The judge could not accept your submission, try again", dto.CodeJudgeFailed))
+	}
+
+	logging.Infof("Created submission ID: %v", submissionID)
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission created successfully", echo.Map{
 		"submission_id": submissionID,
 	}))
 }
 
-// attemptAllowsSubmission reports whether an attempt's status permits a code
-// submission to be judged. Mirrors the check submit_round1.go already
-// performs for visual submissions — "available" (or a missing row) must
-// never reach Judge0, since EnsureAttempt would otherwise silently backfill
-// an unpaid attempt at result-finalize time and still pay out the reward.
-func attemptAllowsSubmission(status string) bool {
-	return status == "bought" || status == "answered"
+// sendBatch posts the batch to Judge0 and maps each returned token to the
+// testcase it runs, in the order they were sent.
+func sendBatch(payload []byte, testcases []sqlc.Testcase) (map[string]string, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := submission.SendBatchSubmissionPayload(client, payload)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusCreated {
+		return nil, errors.New("judge0 batch rejected with status " + resp.Status)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var tokens []struct {
+		Token string `json:"token"`
+	}
+	if err = json.Unmarshal(body, &tokens); err != nil {
+		return nil, err
+	}
+	if len(tokens) != len(testcases) {
+		return nil, errors.New("judge0 returned a different number of tokens than testcases submitted")
+	}
+
+	tokenToTestcase := make(map[string]string, len(tokens))
+	for i, t := range tokens {
+		if t.Token == "" {
+			return nil, errors.New("judge0 returned an empty token")
+		}
+		tokenToTestcase[t.Token] = testcases[i].ID.String()
+	}
+	return tokenToTestcase, nil
 }

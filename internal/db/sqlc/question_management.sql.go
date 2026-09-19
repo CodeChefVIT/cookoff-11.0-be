@@ -148,19 +148,17 @@ func (q *Queries) GetQuestionForUser(ctx context.Context, arg GetQuestionForUser
 	return i, err
 }
 
-const listQuestionsForUser = `-- name: ListQuestionsForUser :many
-SELECT q.id, q.description, q.title, q.q_type, q.input_format,
-       COALESCE(q.buy_in::text, ''::text) AS buy_in,
-       COALESCE(q.reward::text, ''::text) AS reward, q.points, q.round,
-       q.constraints, q.output_format, q.sample_test_input, q.sample_test_output,
-       q.explanation, q.bounty_active
-FROM questions q
-JOIN users u ON u.id = $1
-WHERE q.round = u.round_qualified
-ORDER BY q.title ASC, q.id ASC
+const listAllQuestions = `-- name: ListAllQuestions :many
+SELECT id, description, title, q_type, input_format,
+       COALESCE(buy_in::text, ''::text) AS buy_in,
+       COALESCE(reward::text, ''::text) AS reward, points, round,
+       constraints, output_format, sample_test_input, sample_test_output,
+       explanation, bounty_active
+FROM questions
+ORDER BY title ASC, id ASC
 `
 
-type ListQuestionsForUserRow struct {
+type ListAllQuestionsRow struct {
 	ID               uuid.UUID
 	Description      string
 	Title            string
@@ -178,15 +176,15 @@ type ListQuestionsForUserRow struct {
 	BountyActive     bool
 }
 
-func (q *Queries) ListQuestionsForUser(ctx context.Context, id uuid.UUID) ([]ListQuestionsForUserRow, error) {
-	rows, err := q.db.Query(ctx, listQuestionsForUser, id)
+func (q *Queries) ListAllQuestions(ctx context.Context) ([]ListAllQuestionsRow, error) {
+	rows, err := q.db.Query(ctx, listAllQuestions)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListQuestionsForUserRow
+	var items []ListAllQuestionsRow
 	for rows.Next() {
-		var i ListQuestionsForUserRow
+		var i ListAllQuestionsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Description,

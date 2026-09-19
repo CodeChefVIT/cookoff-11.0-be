@@ -14,13 +14,14 @@ import (
 type Querier interface {
 	BanUser(ctx context.Context, id uuid.UUID) (User, error)
 	CreateAttempt(ctx context.Context, arg CreateAttemptParams) (Attempt, error)
-	CreateGoogleUser(ctx context.Context, arg CreateGoogleUserParams) (User, error)
 	CreateQuestion(ctx context.Context, arg CreateQuestionParams) (Question, error)
 	CreateSubmission(ctx context.Context, arg CreateSubmissionParams) error
 	CreateSubmissionResult(ctx context.Context, arg CreateSubmissionResultParams) (SubmissionResult, error)
 	CreateTestCase(ctx context.Context, arg CreateTestCaseParams) (Testcase, error)
+	CreateUserFromGoogle(ctx context.Context, arg CreateUserFromGoogleParams) (User, error)
 	CreateVisualSubmission(ctx context.Context, arg CreateVisualSubmissionParams) (Submission, error)
 	DeleteQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	DeleteSubmission(ctx context.Context, id uuid.UUID) error
 	DeleteTestCase(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	EnsureAttempt(ctx context.Context, arg EnsureAttemptParams) error
 	GetActiveUsersCount(ctx context.Context) (int32, error)
@@ -29,9 +30,10 @@ type Querier interface {
 	GetAttempt(ctx context.Context, arg GetAttemptParams) (Attempt, error)
 	GetAttemptForUpdate(ctx context.Context, arg GetAttemptForUpdateParams) (Attempt, error)
 	GetBannedUsersCount(ctx context.Context) (int32, error)
+	GetBestScoreForQuestion(ctx context.Context, arg GetBestScoreForQuestionParams) (pgtype.Numeric, error)
+	GetDashboardQuestions(ctx context.Context, id uuid.UUID) ([]GetDashboardQuestionsRow, error)
 	GetLanguageDistribution(ctx context.Context) ([]GetLanguageDistributionRow, error)
 	GetLeaderboardData(ctx context.Context) ([]GetLeaderboardDataRow, error)
-	GetBestScoreForQuestion(ctx context.Context, arg GetBestScoreForQuestionParams) (pgtype.Numeric, error)
 	GetPublicTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]Testcase, error)
 	GetQuestionBuyIn(ctx context.Context, id uuid.UUID) (pgtype.Numeric, error)
 	GetQuestionByID(ctx context.Context, id uuid.UUID) (GetQuestionByIDRow, error)
@@ -42,7 +44,6 @@ type Querier interface {
 	GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submission, error)
 	GetSubmissionForUpdate(ctx context.Context, id uuid.UUID) (Submission, error)
 	GetSubmissionResults(ctx context.Context, submissionID uuid.UUID) ([]SubmissionResult, error)
-	GetSubmissionStatusByID(ctx context.Context, id uuid.UUID) (*string, error)
 	GetSubmissionsAnalytics(ctx context.Context) (GetSubmissionsAnalyticsRow, error)
 	GetTestCaseByID(ctx context.Context, id uuid.UUID) (Testcase, error)
 	GetTotalUsersCount(ctx context.Context) (int32, error)
@@ -54,9 +55,8 @@ type Querier interface {
 	GetUserSubmissions(ctx context.Context, userID uuid.UUID) ([]GetUserSubmissionsRow, error)
 	IncrementUserRound(ctx context.Context, id uuid.UUID) (User, error)
 	LinkGoogleID(ctx context.Context, arg LinkGoogleIDParams) (User, error)
-	ListDashboardQuestions(ctx context.Context, id uuid.UUID) ([]ListDashboardQuestionsRow, error)
+	ListAllQuestions(ctx context.Context) ([]ListAllQuestionsRow, error)
 	ListQuestionsByRound(ctx context.Context, round int32) ([]ListQuestionsByRoundRow, error)
-	ListQuestionsForUser(ctx context.Context, id uuid.UUID) ([]ListQuestionsForUserRow, error)
 	ListVisualBlocksByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualBlock, error)
 	ListVisualSolutionsByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualSolution, error)
 	SetQuestionBountyActive(ctx context.Context, arg SetQuestionBountyActiveParams) (Question, error)
@@ -69,6 +69,7 @@ type Querier interface {
 	UpdateUserBalance(ctx context.Context, arg UpdateUserBalanceParams) error
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) (User, error)
 	UpdateUserScore(ctx context.Context, arg UpdateUserScoreParams) error
+	UpgradeAllUsersRound(ctx context.Context, roundQualified int32) (int64, error)
 	UpgradeUserRound(ctx context.Context, arg UpgradeUserRoundParams) (User, error)
 }
 

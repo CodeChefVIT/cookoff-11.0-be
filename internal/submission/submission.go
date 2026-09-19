@@ -55,6 +55,9 @@ func CreateBatchSubmissionPayload(sourceCode string, languageID int, testCases [
 	if callbackURL == "" {
 		return nil, errors.New("environment variable CALLBACK_URL not set")
 	}
+	// Both sides read the same config value, so they cannot drift apart: if the
+	// secret is unset the URL is unchanged and the handler stays open.
+	callbackURL = utils.SignCallbackURL(callbackURL)
 
 	for i, testcase := range testCases {
 		execution_timeout_t, err := testcase.Runtime.Float64Value()
@@ -109,6 +112,9 @@ func SendBatchSubmissionPayload(client *http.Client, payload []byte) (*http.Resp
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	if token := utils.Config.Judge0AuthToken; token != "" {
+		req.Header.Set("X-Auth-Token", token)
+	}
 
 	resp, err := client.Do(req)
 
@@ -139,6 +145,9 @@ func SendSubmissionPayloadWithWait(client *http.Client, payload []byte) (*http.R
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	if token := utils.Config.Judge0AuthToken; token != "" {
+		req.Header.Set("X-Auth-Token", token)
+	}
 
 	resp, err := client.Do(req)
 

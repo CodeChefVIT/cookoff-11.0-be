@@ -21,7 +21,7 @@ type testcaseQueries interface {
 	GetTestCaseByID(context.Context, uuid.UUID) (sqlc.Testcase, error)
 	UpdateTestCase(context.Context, sqlc.UpdateTestCaseParams) (sqlc.Testcase, error)
 	DeleteTestCase(context.Context, uuid.UUID) (uuid.UUID, error)
-	GetQuestionForUser(context.Context, sqlc.GetQuestionForUserParams) (sqlc.GetQuestionForUserRow, error)
+	questionReader
 	GetPublicTestCasesByQuestion(context.Context, uuid.UUID) ([]sqlc.Testcase, error)
 	GetAllTestCasesByQuestion(context.Context, uuid.UUID) ([]sqlc.Testcase, error)
 }
@@ -39,7 +39,7 @@ func testcaseError(c echo.Context, s int, m string, err ...error) error {
 			logging.Errorf("Testcase controller error [%d]: %s", s, m)
 		}
 	}
-	return c.JSON(s, dto.NewErrorResponse(m, nil))
+	return c.JSON(s, dto.NewCodedError(m, dto.CodeForStatus(s)))
 }
 func (tc *TestcaseController) Create(c echo.Context) error {
 	var r dto.TestcaseRequest
@@ -65,6 +65,7 @@ func (tc *TestcaseController) Create(c echo.Context) error {
 	if e != nil {
 		return testcaseError(c, http.StatusInternalServerError, "Failed to create testcase")
 	}
+	utils.InvalidateContentCache(c.Request().Context())
 	return c.JSON(http.StatusCreated, dto.NewSuccessResponse("Testcase created", testcaseResponse(v)))
 }
 func (tc *TestcaseController) Update(c echo.Context) error {
@@ -112,6 +113,7 @@ func (tc *TestcaseController) Update(c echo.Context) error {
 	if e != nil {
 		return testcaseError(c, http.StatusInternalServerError, "Failed to update testcase")
 	}
+	utils.InvalidateContentCache(c.Request().Context())
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Testcase updated", testcaseResponse(updated)))
 }
 func (tc *TestcaseController) Delete(c echo.Context) error {
@@ -126,6 +128,7 @@ func (tc *TestcaseController) Delete(c echo.Context) error {
 	if e != nil {
 		return testcaseError(c, http.StatusInternalServerError, "Failed to delete testcase")
 	}
+	utils.InvalidateContentCache(c.Request().Context())
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Testcase deleted", nil))
 }
 
@@ -148,22 +151,22 @@ func (tc *TestcaseController) ListPublic(c echo.Context) error {
 	if e != nil {
 		return testcaseError(c, http.StatusBadRequest, "Invalid question ID")
 	}
-	uid, e := userID(c)
+	if _, ok := visibleQuestion(c, tc.queries, qid); !ok {
+		return nil
+	}
+	out, e := utils.Cached(c.Request().Context(), utils.ContentCachePrefix+"testcases:"+qid.String(), contentTTL, func(ctx context.Context) ([]dto.TestcaseResponse, error) {
+		rows, err := tc.queries.GetPublicTestCasesByQuestion(ctx, qid)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]dto.TestcaseResponse, len(rows))
+		for i, v := range rows {
+			out[i] = testcaseResponse(v)
+		}
+		return out, nil
+	})
 	if e != nil {
-		return testcaseError(c, http.StatusUnauthorized, "Unauthorized")
-	}
-	if _, e = tc.queries.GetQuestionForUser(c.Request().Context(), sqlc.GetQuestionForUserParams{ID: qid, ID_2: uid}); errors.Is(e, pgx.ErrNoRows) {
-		return testcaseError(c, http.StatusNotFound, "Question not found")
-	} else if e != nil {
-		return testcaseError(c, http.StatusInternalServerError, "Failed to verify question")
-	}
-	rows, e := tc.queries.GetPublicTestCasesByQuestion(c.Request().Context(), qid)
-	if e != nil {
-		return testcaseError(c, http.StatusInternalServerError, "Failed to load testcases")
-	}
-	out := make([]dto.TestcaseResponse, len(rows))
-	for i, v := range rows {
-		out[i] = testcaseResponse(v)
+		return testcaseError(c, http.StatusInternalServerError, "Failed to load testcases", e)
 	}
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Public testcases retrieved", out))
 }

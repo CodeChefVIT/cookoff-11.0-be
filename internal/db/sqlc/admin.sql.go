@@ -393,6 +393,20 @@ func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) 
 	return i, err
 }
 
+const upgradeAllUsersRound = `-- name: UpgradeAllUsersRound :execrows
+UPDATE users
+SET round_qualified = $1
+WHERE is_banned = false AND round_qualified < $1
+`
+
+func (q *Queries) UpgradeAllUsersRound(ctx context.Context, roundQualified int32) (int64, error) {
+	result, err := q.db.Exec(ctx, upgradeAllUsersRound, roundQualified)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const upgradeUserRound = `-- name: UpgradeUserRound :one
 UPDATE users
 SET round_qualified = $2

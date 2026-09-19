@@ -25,6 +25,7 @@ type cfg struct {
 	GoogleAuthURL      string        `env:"GOOGLE_AUTH_URL" envDefault:"https://accounts.google.com/o/oauth2/v2/auth"`
 	GoogleTokenURL     string        `env:"GOOGLE_TOKEN_URL" envDefault:"https://oauth2.googleapis.com/token"`
 	GoogleInfoURL      string        `env:"GOOGLE_INFO_URL" envDefault:"https://oauth2.googleapis.com/tokeninfo"`
+	AllowedEmailDomain string        `env:"ALLOWED_EMAIL_DOMAIN"`
 	AccessTokenTTL     time.Duration `env:"ACCESS_TOKEN_TTL" envDefault:"15m"`
 	RefreshTokenTTL    time.Duration `env:"REFRESH_TOKEN_TTL" envDefault:"48h"`
 
@@ -49,7 +50,25 @@ type cfg struct {
 	RedisPassword     string `env:"REDIS_PASSWORD"`
 
 	CallbackURL string `env:"CALLBACK_URL"`
-	Judge0URI   string `env:"JUDGE0_URI"`
+	// Shared secret appended to the Judge0 callback URL and required back on
+	// PUT /judge0callback. That route cannot use the JWT middleware (Judge0 is
+	// not a logged-in user), so without this anyone who guesses a submission
+	// token can post a verdict. Optional: leave unset and the callback stays
+	// open, exactly as before.
+	Judge0CallbackSecret string `env:"JUDGE0_CALLBACK_SECRET"`
+	Judge0URI            string `env:"JUDGE0_URI"`
+
+	RateLimitMax    int           `env:"RATE_LIMIT_MAX" envDefault:"15"`
+	RateLimitWindow time.Duration `env:"RATE_LIMIT_WINDOW" envDefault:"1s"`
+
+	// Concurrent synchronous Judge0 calls (Run / custom input) per API process.
+	Judge0WaitSlots int `env:"JUDGE0_WAIT_SLOTS" envDefault:"64"`
+
+	WorkerCount      int   `env:"WORKER_COUNT" envDefault:"10"`
+	PostgresMaxConns int32 `env:"POSTGRES_MAX_CONNS" envDefault:"20"`
+	// Sent as X-Auth-Token on every Judge0 request; must match AUTHN_TOKEN in
+	// judge0.conf. Leave unset when the instance has authentication disabled.
+	Judge0AuthToken string `env:"JUDGE0_AUTH_TOKEN"`
 }
 
 var Config cfg

@@ -23,9 +23,6 @@ WHERE id = $1
 FOR UPDATE;
 
 
--- name: GetSubmissionStatusByID :one
-SELECT status FROM submissions
-WHERE id = $1;
 
 -- name: GetBestScoreForQuestion :one
 SELECT (
@@ -46,4 +43,7 @@ FROM submissions
 JOIN questions ON submissions.question_id = questions.id
 WHERE submissions.user_id = $1
   AND submissions.question_id = $2
-  AND submissions.id != $3;
+  AND submissions.id != $3;
+-- name: DeleteSubmission :exec
+DELETE FROM submissions
+WHERE id = $1;
