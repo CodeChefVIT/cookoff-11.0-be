@@ -17,7 +17,6 @@ import (
 )
 
 type fakeQuestions struct {
-	questionQueries
 	byID map[uuid.UUID]sqlc.GetQuestionByIDRow
 }
 
@@ -28,6 +27,21 @@ func (f fakeQuestions) GetQuestionByID(_ context.Context, id uuid.UUID) (sqlc.Ge
 	}
 	return q, nil
 }
+func (fakeQuestions) ListVisualBlocksByQuestionID(_ context.Context, _ uuid.UUID) ([]sqlc.VisualBlock, error) { return nil, nil }
+func (fakeQuestions) ListVisualSolutionsByQuestionID(_ context.Context, _ uuid.UUID) ([]sqlc.VisualSolution, error) { return nil, nil }
+func (fakeQuestions) ListQuestionsByRound(_ context.Context, _ int32) ([]sqlc.ListQuestionsByRoundRow, error) { return nil, nil }
+func (fakeQuestions) ListAllQuestions(_ context.Context) ([]sqlc.ListAllQuestionsRow, error) { return nil, nil }
+func (fakeQuestions) CreateQuestion(_ context.Context, _ sqlc.CreateQuestionParams) (sqlc.Question, error) { return sqlc.Question{}, nil }
+func (fakeQuestions) UpdateQuestion(_ context.Context, _ sqlc.UpdateQuestionParams) (sqlc.Question, error) { return sqlc.Question{}, nil }
+func (fakeQuestions) DeleteQuestion(_ context.Context, _ uuid.UUID) (uuid.UUID, error) { return uuid.Nil, nil }
+func (fakeQuestions) SetQuestionBountyActive(_ context.Context, _ sqlc.SetQuestionBountyActiveParams) (sqlc.Question, error) { return sqlc.Question{}, nil }
+func (fakeQuestions) CreateVisualBlock(_ context.Context, _ sqlc.CreateVisualBlockParams) (sqlc.VisualBlock, error) { return sqlc.VisualBlock{}, nil }
+func (fakeQuestions) DeleteVisualBlock(_ context.Context, _ sqlc.DeleteVisualBlockParams) error { return nil }
+func (fakeQuestions) DeleteVisualBlocksByQuestionID(_ context.Context, _ sqlc.DeleteVisualBlocksByQuestionIDParams) error { return nil }
+func (fakeQuestions) CreateVisualSolution(_ context.Context, _ sqlc.CreateVisualSolutionParams) (sqlc.VisualSolution, error) { return sqlc.VisualSolution{}, nil }
+func (fakeQuestions) DeleteVisualSolution(_ context.Context, _ sqlc.DeleteVisualSolutionParams) error { return nil }
+func (fakeQuestions) DeleteVisualSolutionsByQuestionID(_ context.Context, _ sqlc.DeleteVisualSolutionsByQuestionIDParams) error { return nil }
+func (fakeQuestions) WithTx(_ pgx.Tx) *sqlc.Queries { return nil }
 
 func getQuestion(t *testing.T, qc *QuestionController, qid uuid.UUID, user middlewares.AuthUser) int {
 	t.Helper()
@@ -52,7 +66,7 @@ func TestGetByIDAdminSeesAnyRoundBeforeItStarts(t *testing.T) {
 	_ = mr.Set("contest:round", "1")
 
 	qid := uuid.New()
-	qc := NewQuestionController(fakeQuestions{byID: map[uuid.UUID]sqlc.GetQuestionByIDRow{
+	qc := NewQuestionController(nil, fakeQuestions{byID: map[uuid.UUID]sqlc.GetQuestionByIDRow{
 		qid: {ID: qid, Title: "Final", QType: "code", Round: 3, BuyIn: "", Reward: ""},
 	}})
 

@@ -20,6 +20,8 @@ type QuestionResponse struct {
 	Explanation      []string  `json:"explanation,omitempty"`
 	BountyActive     bool      `json:"bounty_active"`
 	ScratchBlocks    []string  `json:"scratch_blocks,omitempty"`
+	Solutions        [][]int   `json:"solutions,omitempty"`
+	SolutionPoints   []float64 `json:"solution_points,omitempty"`
 }
 
 type QuestionRequest struct {

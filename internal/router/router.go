@@ -41,7 +41,7 @@ func RegisterRoutes(e *echo.Echo) {
 	e.POST("/runcode", controllers.RunCode, authenticated...)
 	e.POST("/runcustom", controllers.RunCustom, authenticated...)
 
-	questionController := controllers.NewQuestionController(queries)
+	questionController := controllers.NewQuestionController(db.DBPool, queries)
 	questionRoutes := e.Group("/question", authenticated...)
 	questionRoutes.GET("/round", questionController.ListByRound)
 	questionRoutes.GET("/:id", questionController.GetByID)
