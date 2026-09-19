@@ -87,24 +87,12 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 		return fmt.Errorf("convert memory: %w", err)
 	}
 
-	// Calculate proportional testcase points: (question.Points / total_testcases) for a passing testcase
+	// A passing testcase earns its share of the question's points. This is
+	// informational (shown in the admin panel); the score itself is computed
+	// once, in finalizeSubmission. A failed lookup records 0, never a guess.
 	var pointsAwarded int32
 	if status == utils.Judge0Accepted.GetJudge0Status() {
-		sub, subErr := db.Queries.GetSubmissionByID(ctx, submissionID)
-		if subErr == nil {
-			question, qErr := db.Queries.GetQuestionByID(ctx, sub.QuestionID)
-			testcases, tcErr := db.Queries.GetAllTestCasesByQuestion(ctx, sub.QuestionID)
-			if qErr == nil && tcErr == nil && len(testcases) > 0 {
-				calcPoints := int64(question.Points) / int64(len(testcases))
-				if calcPoints >= 0 && calcPoints <= 2147483647 {
-					pointsAwarded = int32(calcPoints)
-				}
-			} else {
-				pointsAwarded = 1
-			}
-		} else {
-			pointsAwarded = 1
-		}
+		pointsAwarded = testcaseShare(ctx, submissionID)
 	}
 
 	description := payload.Status.Description
@@ -156,6 +144,11 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 	// submission_results row into the parent submissions row.
 	// Pre-fetches read-only data outside the FOR UPDATE lock via runFinalize.
 	result, err := runFinalize(ctx, submissionID)
+	if errors.Is(err, errAlreadyFinalized) {
+		// A redelivered task for a finished submission: the verdict is already
+		// cached and published, and overwriting it would blank it out.
+		return nil
+	}
 	if err != nil {
 		restoreTokenAfterFailure(ctx, payload.Token, submissionIDStr, testcaseIDStr, submissionID, err)
 		return fmt.Errorf("finalize submission: %w", err)
@@ -180,7 +173,7 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 // finalizeSubmission runs once per submission, exactly when the last
 // testcase's callback arrives. It now returns the built dto.ResultResponse
 // alongside the error, so the caller can cache it in Redis after commit.
-func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uuid.UUID, question sqlc.GetQuestionByIDRow, testcases []sqlc.Testcase) (dto.ResultResponse, error) {
+func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uuid.UUID, question sqlc.GetQuestionByIDRow) (dto.ResultResponse, error) {
 	submission, err := qtx.GetSubmissionForUpdate(ctx, submissionID)
 	if err != nil {
 		return dto.ResultResponse{}, fmt.Errorf("get submission for update: %w", err)
@@ -191,7 +184,7 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		*submission.Status != utils.Judge0Processing.GetJudge0Status() {
 		logging.Infof("submission %s: already finalized with status %q -- skipping",
 			submissionID, *submission.Status)
-		return dto.ResultResponse{}, nil
+		return dto.ResultResponse{}, errAlreadyFinalized
 	}
 
 	results, err := qtx.GetSubmissionResults(ctx, submissionID)
@@ -202,10 +195,10 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 		return dto.ResultResponse{}, fmt.Errorf("no submission results found for submission %s", submissionID)
 	}
 
-	if len(results) != len(testcases) {
-		return dto.ResultResponse{}, fmt.Errorf("incomplete results for submission %s: got %d, expected %d",
-			submissionID, len(results), len(testcases))
-	}
+	// Finalize only runs once the submission's token set is empty, i.e. every
+	// testcase sent to Judge0 has reported back and been committed. Comparing
+	// against the question's *current* testcases instead left a submission
+	// pending forever whenever an admin added or removed a testcase mid-round.
 
 	var passed, failed int32
 	var maxRuntime, maxMemory float64
@@ -431,6 +424,27 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	return response, nil
 }
 
+// errAlreadyFinalized means the submission already has its verdict.
+var errAlreadyFinalized = errors.New("submission already finalized")
+
+// testcaseShare is one testcase's share of the question's points, or 0 when
+// it cannot be worked out.
+func testcaseShare(ctx context.Context, submissionID uuid.UUID) int32 {
+	sub, err := db.Queries.GetSubmissionByID(ctx, submissionID)
+	if err != nil {
+		return 0
+	}
+	question, err := db.Queries.GetQuestionByID(ctx, sub.QuestionID)
+	if err != nil {
+		return 0
+	}
+	testcases, err := db.Queries.GetAllTestCasesByQuestion(ctx, sub.QuestionID)
+	if err != nil || len(testcases) == 0 {
+		return 0
+	}
+	return question.Points / int32(len(testcases)) // #nosec G115
+}
+
 func runFinalize(ctx context.Context, submissionID uuid.UUID) (dto.ResultResponse, error) {
 	// Pre-fetch read-only data outside the locking transaction
 	sub, err := db.Queries.GetSubmissionByID(ctx, submissionID)
@@ -443,20 +457,15 @@ func runFinalize(ctx context.Context, submissionID uuid.UUID) (dto.ResultRespons
 		return dto.ResultResponse{}, fmt.Errorf("get question: %w", err)
 	}
 
-	testcases, err := db.Queries.GetAllTestCasesByQuestion(ctx, sub.QuestionID)
-	if err != nil {
-		return dto.ResultResponse{}, fmt.Errorf("get testcases: %w", err)
-	}
-
 	finalTx, err := db.DBPool.Begin(ctx)
 	if err != nil {
 		return dto.ResultResponse{}, fmt.Errorf("begin final tx: %w", err)
 	}
 	defer func() { _ = finalTx.Rollback(ctx) }()
 
-	result, err := finalizeSubmission(ctx, db.Queries.WithTx(finalTx), submissionID, question, testcases)
+	result, err := finalizeSubmission(ctx, db.Queries.WithTx(finalTx), submissionID, question)
 	if err != nil {
-		return dto.ResultResponse{}, fmt.Errorf("finalize submission: %w", err)
+		return dto.ResultResponse{}, err
 	}
 
 	if err := finalTx.Commit(ctx); err != nil {

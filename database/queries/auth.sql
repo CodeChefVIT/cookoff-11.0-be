@@ -11,6 +11,8 @@ SELECT id, email, reg_no, role, round_qualified, google_id, balance, score, name
 UPDATE users SET google_id = $2 WHERE id = $1 AND google_id IS NULL
 RETURNING id, email, reg_no, role, round_qualified, google_id, balance, score, name, is_banned;
 
--- name: CreateGoogleUser :one
-INSERT INTO users (id, email, reg_no, role, google_id, name) VALUES ($1, $2, $3, $4, $5, $6)
+-- name: CreateUserFromGoogle :one
+INSERT INTO users (id, email, reg_no, role, name, google_id, balance)
+VALUES ($1, $2, $3, 'user', $4, $5, $6)
+ON CONFLICT DO NOTHING
 RETURNING id, email, reg_no, role, round_qualified, google_id, balance, score, name, is_banned;

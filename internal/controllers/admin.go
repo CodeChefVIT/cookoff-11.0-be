@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -17,6 +18,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/labstack/echo/v4"
 )
+
+// maxRound is the last contest round.
+const maxRound int32 = 3
 
 type AdminController struct {
 	queries *sqlc.Queries
@@ -41,7 +45,7 @@ func (ac *AdminController) GetAllUsers(c echo.Context) error {
 	users, err := ac.queries.GetAllUsers(ctx)
 	if err != nil {
 		logging.Errorf("GetAllUsers failed: %v", err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch users", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to fetch users", dto.CodeInternal))
 	}
 
 	res := make([]dto.UserResponse, len(users))
@@ -77,9 +81,10 @@ func (ac *AdminController) BanUser(c echo.Context) error {
 			return c.JSON(http.StatusNotFound, dto.NewErrorResponse("User not found", nil))
 		}
 		logging.Errorf("BanUser failed for user %s: %v", id, err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to ban user", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to ban user", dto.CodeInternal))
 	}
 
+	utils.InvalidateAuthUser(ctx, id.String())
 	logging.Infof("User %s banned by admin", id)
 	balance, _ := utils.NumericToFloat64(user.Balance)
 	score, _ := utils.NumericToFloat64(user.Score)
@@ -111,9 +116,10 @@ func (ac *AdminController) UnbanUser(c echo.Context) error {
 			return c.JSON(http.StatusNotFound, dto.NewErrorResponse("User not found", nil))
 		}
 		logging.Errorf("UnbanUser failed for user %s: %v", id, err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to unban user", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to unban user", dto.CodeInternal))
 	}
 
+	utils.InvalidateAuthUser(ctx, id.String())
 	logging.Infof("User %s unbanned by admin", id)
 	balance, _ := utils.NumericToFloat64(user.Balance)
 	score, _ := utils.NumericToFloat64(user.Score)
@@ -145,12 +151,21 @@ func (ac *AdminController) UpgradeUser(c echo.Context) error {
 			return c.JSON(http.StatusNotFound, dto.NewErrorResponse("User not found", nil))
 		}
 		logging.Errorf("UpgradeUser failed to fetch user %s: %v", id, err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to find user", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to find user", dto.CodeInternal))
 	}
 
 	var req dto.UpgradeUserRequest
 	if bindErr := c.Bind(&req); bindErr != nil {
-		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse("Invalid request payload", bindErr.Error()))
+		return c.JSON(http.StatusBadRequest, dto.NewCodedError("Invalid request payload", dto.CodeValidation))
+	}
+
+	targetRound := req.RoundQualified
+	if targetRound == nil {
+		targetRound = req.Round
+	}
+
+	if targetRound != nil && (*targetRound < 0 || *targetRound > maxRound) {
+		return c.JSON(http.StatusBadRequest, dto.NewCodedError("round_qualified must be between 0 and 3", dto.CodeValidation))
 	}
 
 	updatedUser := existingUser
@@ -163,36 +178,37 @@ func (ac *AdminController) UpgradeUser(c echo.Context) error {
 		})
 		if err != nil {
 			logging.Errorf("UpgradeUser failed updating role for user %s: %v", id, err)
-			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to update user role", err.Error()))
+			return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to update user role", dto.CodeInternal))
 		}
 		hasUpdate = true
 	}
 
-	targetRound := req.RoundQualified
-	if targetRound == nil {
-		targetRound = req.Round
-	}
-
-	if targetRound != nil && *targetRound > 0 {
+	if targetRound != nil {
 		updatedUser, err = ac.queries.UpgradeUserRound(ctx, sqlc.UpgradeUserRoundParams{
 			ID:             id,
 			RoundQualified: *targetRound,
 		})
 		if err != nil {
 			logging.Errorf("UpgradeUser failed upgrading round for user %s: %v", id, err)
-			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to upgrade user round", err.Error()))
+			return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to upgrade user round", dto.CodeInternal))
 		}
 		hasUpdate = true
 	}
 
 	if !hasUpdate {
+		// The admin panel's "upgrade" button posts no body and relies on this
+		// increment; it stops at the final round.
+		if existingUser.RoundQualified >= maxRound {
+			return c.JSON(http.StatusBadRequest, dto.NewCodedError("User is already in the final round", dto.CodeValidation))
+		}
 		updatedUser, err = ac.queries.IncrementUserRound(ctx, id)
 		if err != nil {
 			logging.Errorf("UpgradeUser failed incrementing round for user %s: %v", id, err)
-			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to increment user round", err.Error()))
+			return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to increment user round", dto.CodeInternal))
 		}
 	}
 
+	utils.InvalidateAuthUser(ctx, id.String())
 	logging.Infof("User %s upgraded by admin", id)
 	balance, _ := utils.NumericToFloat64(updatedUser.Balance)
 	score, _ := utils.NumericToFloat64(updatedUser.Score)
@@ -215,7 +231,7 @@ func (ac *AdminController) UpgradeAllUsers(c echo.Context) error {
 	ctx := c.Request().Context()
 	var req dto.UpgradeAllUsersRequest
 	if err := c.Bind(&req); err != nil && c.Request().ContentLength > 0 {
-		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse("Invalid request payload", err.Error()))
+		return c.JSON(http.StatusBadRequest, dto.NewCodedError("Invalid request payload", dto.CodeValidation))
 	}
 
 	targetRound := int32(2)
@@ -224,13 +240,17 @@ func (ac *AdminController) UpgradeAllUsers(c echo.Context) error {
 	} else if req.Round != nil && *req.Round > 0 {
 		targetRound = *req.Round
 	}
+	if targetRound > maxRound {
+		return c.JSON(http.StatusBadRequest, dto.NewCodedError("round must be between 1 and 3", dto.CodeValidation))
+	}
 
 	rowsAffected, err := ac.queries.UpgradeAllUsersRound(ctx, targetRound)
 	if err != nil {
 		logging.Errorf("UpgradeAllUsers failed: %v", err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to upgrade all users", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to upgrade all users", dto.CodeInternal))
 	}
 
+	utils.InvalidateAllAuthUsers(ctx)
 	logging.Infof("Upgraded %d users to round %d by admin", rowsAffected, targetRound)
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse(
 		"All non-banned users upgraded successfully",
@@ -253,13 +273,13 @@ func (ac *AdminController) GetUserSubmissions(c echo.Context) error {
 			return c.JSON(http.StatusNotFound, dto.NewErrorResponse("User not found", nil))
 		}
 		logging.Errorf("GetUserSubmissions failed to fetch user %s: %v", id, userErr)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch user", userErr.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to fetch user", dto.CodeInternal))
 	}
 
 	submissions, err := ac.queries.GetUserSubmissions(ctx, id)
 	if err != nil {
 		logging.Errorf("GetUserSubmissions failed for user %s: %v", id, err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch user submissions", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to fetch user submissions", dto.CodeInternal))
 	}
 
 	res := make([]dto.UserSubmissionResponse, len(submissions))
@@ -310,12 +330,23 @@ func (ac *AdminController) GetUserSubmissions(c echo.Context) error {
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("User submissions fetched successfully", res))
 }
 
+// leaderboardTTL keeps an admin panel that polls the leaderboard from
+// re-running the full aggregate over every submission each time.
+const leaderboardTTL = 10 * time.Second
+
 func (ac *AdminController) GetLeaderboard(c echo.Context) error {
-	ctx := c.Request().Context()
-	data, err := ac.queries.GetLeaderboardData(ctx)
+	res, err := utils.Cached(c.Request().Context(), "cache:leaderboard", leaderboardTTL, ac.buildLeaderboard)
 	if err != nil {
 		logging.Errorf("GetLeaderboard failed: %v", err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch leaderboard data", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to fetch leaderboard data", dto.CodeInternal))
+	}
+	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Leaderboard fetched successfully", res))
+}
+
+func (ac *AdminController) buildLeaderboard(ctx context.Context) ([]dto.LeaderboardEntry, error) {
+	data, err := ac.queries.GetLeaderboardData(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	res := make([]dto.LeaderboardEntry, len(data))
@@ -344,8 +375,7 @@ func (ac *AdminController) GetLeaderboard(c echo.Context) error {
 			IsBanned:           row.IsBanned,
 		}
 	}
-
-	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Leaderboard fetched successfully", res))
+	return res, nil
 }
 
 func (ac *AdminController) GetAnalytics(c echo.Context) error {
@@ -354,25 +384,25 @@ func (ac *AdminController) GetAnalytics(c echo.Context) error {
 	activeUsers, err := ac.queries.GetActiveUsersCount(ctx)
 	if err != nil {
 		logging.Errorf("GetAnalytics failed to fetch active users count: %v", err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch active users count", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to fetch active users count", dto.CodeInternal))
 	}
 
 	totalUsers, err := ac.queries.GetTotalUsersCount(ctx)
 	if err != nil {
 		logging.Errorf("GetAnalytics failed to fetch total users count: %v", err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch total users count", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to fetch total users count", dto.CodeInternal))
 	}
 
 	bannedUsers, err := ac.queries.GetBannedUsersCount(ctx)
 	if err != nil {
 		logging.Errorf("GetAnalytics failed to fetch banned users count: %v", err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch banned users count", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to fetch banned users count", dto.CodeInternal))
 	}
 
 	subAnalytics, err := ac.queries.GetSubmissionsAnalytics(ctx)
 	if err != nil {
 		logging.Errorf("GetAnalytics failed to fetch submission analytics: %v", err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch submission analytics", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to fetch submission analytics", dto.CodeInternal))
 	}
 
 	tenMinutesAgo := time.Now().UTC().Add(-10 * time.Minute)
@@ -429,16 +459,12 @@ func (ac *AdminController) GetAnalytics(c echo.Context) error {
 func (ac *AdminController) SetTime(c echo.Context) error {
 	var req dto.SetTimeRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse("Invalid request payload", err.Error()))
+		return c.JSON(http.StatusBadRequest, dto.NewCodedError("Invalid request payload", dto.CodeValidation))
 	}
 
 	var durationSeconds int64 = 3600
 	if req.DurationSeconds != nil && *req.DurationSeconds > 0 {
 		durationSeconds = *req.DurationSeconds
-	} else if req.DurationMinutes != nil && *req.DurationMinutes > 0 {
-		durationSeconds = *req.DurationMinutes * 60
-	} else if req.Duration != nil && *req.Duration > 0 {
-		durationSeconds = *req.Duration
 	}
 
 	var round int32 = 1
@@ -449,7 +475,7 @@ func (ac *AdminController) SetTime(c echo.Context) error {
 	res, err := timer.SetTime(c.Request().Context(), round, durationSeconds)
 	if err != nil {
 		logging.Errorf("SetTime failed: %v", err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to set round timer", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to set round timer", dto.CodeInternal))
 	}
 
 	logging.Infof("Round timer set by admin: round=%d, duration=%ds", round, durationSeconds)
@@ -459,28 +485,18 @@ func (ac *AdminController) SetTime(c echo.Context) error {
 func (ac *AdminController) UpdateTime(c echo.Context) error {
 	var req dto.UpdateTimeRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse("Invalid request payload", err.Error()))
+		return c.JSON(http.StatusBadRequest, dto.NewCodedError("Invalid request payload", dto.CodeValidation))
 	}
 
 	var additionalSeconds int64
 	if req.AdditionalSeconds != nil {
 		additionalSeconds = *req.AdditionalSeconds
-	} else if req.AdditionalMinutes != nil {
-		additionalSeconds = *req.AdditionalMinutes * 60
-	} else if req.AdditionalTime != nil {
-		additionalSeconds = *req.AdditionalTime
 	}
 
-	var newDurationSeconds *int64
-	if req.Duration != nil && *req.Duration > 0 {
-		sec := *req.Duration
-		newDurationSeconds = &sec
-	}
-
-	res, err := timer.UpdateTime(c.Request().Context(), additionalSeconds, newDurationSeconds)
+	res, err := timer.UpdateTime(c.Request().Context(), additionalSeconds)
 	if err != nil {
 		logging.Errorf("UpdateTime failed: %v", err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to update round timer", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to update round timer", dto.CodeInternal))
 	}
 
 	logging.Infof("Round timer updated by admin: additionalSeconds=%d", additionalSeconds)
@@ -499,7 +515,7 @@ func (ac *AdminController) StartRound(c echo.Context) error {
 	res, err := timer.StartRound(c.Request().Context(), roundPtr)
 	if err != nil {
 		logging.Errorf("StartRound failed: %v", err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to start round", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to start round", dto.CodeInternal))
 	}
 
 	logging.Infof("Round started by admin")
@@ -510,7 +526,7 @@ func (ac *AdminController) ResetRound(c echo.Context) error {
 	res, err := timer.ResetRound(c.Request().Context())
 	if err != nil {
 		logging.Errorf("ResetRound failed: %v", err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to reset round", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to reset round", dto.CodeInternal))
 	}
 
 	logging.Infof("Round reset by admin")

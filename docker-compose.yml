@@ -109,6 +109,10 @@ services:
       - JUDGE0_URI=${JUDGE0_URI:-}
       - JUDGE0_CALLBACK_SECRET=${JUDGE0_CALLBACK_SECRET:-}
       - JUDGE0_AUTH_TOKEN=${JUDGE0_AUTH_TOKEN:-}
+      - RATE_LIMIT_MAX=${RATE_LIMIT_MAX:-15}
+      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-1s}
+      - JUDGE0_WAIT_SLOTS=${JUDGE0_WAIT_SLOTS:-64}
+      - POSTGRES_MAX_CONNS=${POSTGRES_MAX_CONNS:-20}
     depends_on:
       postgres:
         condition: service_healthy
@@ -158,6 +162,8 @@ services:
       - JUDGE0_URI=${JUDGE0_URI:-}
       - JUDGE0_CALLBACK_SECRET=${JUDGE0_CALLBACK_SECRET:-}
       - JUDGE0_AUTH_TOKEN=${JUDGE0_AUTH_TOKEN:-}
+      - WORKER_COUNT=${WORKER_COUNT:-10}
+      - POSTGRES_MAX_CONNS=${POSTGRES_MAX_CONNS:-20}
     depends_on:
       postgres:
         condition: service_healthy

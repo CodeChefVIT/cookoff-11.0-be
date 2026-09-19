@@ -11,6 +11,11 @@ import (
 
 var TokenCache *redis.Client
 
+// tokenTTL caps how long an unanswered Judge0 token lingers in Redis. Real
+// callbacks arrive within seconds; this only reaps tokens whose callback
+// never came.
+const tokenTTL = 24 * time.Hour
+
 func InitTokenCache() {
 	addr := fmt.Sprintf("%s:%s", Config.RedisHost, Config.RedisPort)
 	TokenCache = redis.NewClient(&redis.Options{
@@ -44,11 +49,12 @@ func CacheToken(ctx context.Context, token string, submissionID string, testcase
 		return fmt.Errorf("token cache is not initialized")
 	}
 	value := fmt.Sprintf("%s:%s", submissionID, testcaseID)
-	if err := TokenCache.Set(ctx, tokenKey(token), value, 0).Err(); err != nil {
+	pipe := TokenCache.TxPipeline()
+	pipe.Set(ctx, tokenKey(token), value, tokenTTL)
+	pipe.SAdd(ctx, submissionTokensKey(submissionID), token)
+	pipe.Expire(ctx, submissionTokensKey(submissionID), tokenTTL)
+	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("failed to cache token %q: %w", token, err)
-	}
-	if err := TokenCache.SAdd(ctx, submissionTokensKey(submissionID), token).Err(); err != nil {
-		return fmt.Errorf("failed to add token %q to submission set: %w", token, err)
 	}
 	return nil
 }
@@ -64,9 +70,10 @@ func CacheTokens(ctx context.Context, submissionID string, tokenToTestcase map[s
 	pipe := TokenCache.TxPipeline()
 	for token, testcaseID := range tokenToTestcase {
 		value := fmt.Sprintf("%s:%s", submissionID, testcaseID)
-		pipe.Set(ctx, tokenKey(token), value, 0)
+		pipe.Set(ctx, tokenKey(token), value, tokenTTL)
 		pipe.SAdd(ctx, submissionTokensKey(submissionID), token)
 	}
+	pipe.Expire(ctx, submissionTokensKey(submissionID), tokenTTL)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("failed to cache tokens for submission %q: %w", submissionID, err)
 	}
@@ -85,15 +92,6 @@ func GetSubmissionIDByToken(ctx context.Context, token string) (submissionID, te
 	return parts[0], parts[1], nil
 }
 
-func DeleteToken(ctx context.Context, token, submissionID string) error {
-	pipe := TokenCache.TxPipeline()
-	pipe.Del(ctx, tokenKey(token))
-	pipe.SRem(ctx, submissionTokensKey(submissionID), token)
-	if _, err := pipe.Exec(ctx); err != nil {
-		return fmt.Errorf("failed to delete token %q: %w", token, err)
-	}
-	return nil
-}
 
 // DeleteTokenAndCount removes a token AND reads how many tokens remain in
 // the submission's outstanding-token set, as a single Redis MULTI/EXEC
@@ -127,13 +125,6 @@ func RestoreToken(ctx context.Context, token, submissionID, testcaseID string) e
 	return CacheToken(ctx, token, submissionID, testcaseID)
 }
 
-func GetTokenCount(ctx context.Context, submissionID string) (int64, error) {
-	count, err := TokenCache.SCard(ctx, submissionTokensKey(submissionID)).Result()
-	if err != nil {
-		return 0, fmt.Errorf("failed to count tokens for submission %q: %w", submissionID, err)
-	}
-	return count, nil
-}
 func tokenKey(token string) string {
 	return "token:" + token
 }

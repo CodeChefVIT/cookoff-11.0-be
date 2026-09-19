@@ -8,6 +8,8 @@ import (
 	sqlc "github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/logging"
+	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -33,39 +35,29 @@ func NewAttemptController(
 func (c *AttemptController) CreateAttempt(ctx echo.Context) error {
 	questionID, err := uuid.Parse(ctx.Param("id"))
 	if err != nil {
-		return ctx.JSON(http.StatusBadRequest, dto.NewErrorResponse(
-			"Invalid question ID", nil,
-		))
+		return ctx.JSON(http.StatusBadRequest, dto.NewCodedError("Invalid question ID", dto.CodeValidation))
 	}
 
-	userIDValue, ok := ctx.Get("user_id").(string)
+	user, ok := middlewares.CurrentUser(ctx)
 	if !ok {
-		return ctx.JSON(http.StatusUnauthorized, dto.NewErrorResponse(
-			"Unauthorized", nil,
-		))
+		return ctx.JSON(http.StatusUnauthorized, dto.NewCodedError("Unauthorized", dto.CodeUnauthorized))
 	}
-
-	userID, err := uuid.Parse(userIDValue)
-	if err != nil {
-		return ctx.JSON(http.StatusBadRequest, dto.NewErrorResponse(
-			"Invalid user ID", nil,
-		))
-	}
+	userID := user.ID
 
 	question, err := c.queries.GetQuestionByID(ctx.Request().Context(), questionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ctx.JSON(http.StatusNotFound, dto.NewErrorResponse(
-				"Question not found", nil,
-			))
+			return ctx.JSON(http.StatusNotFound, dto.NewCodedError("Question not found", dto.CodeNotFound))
 		}
-		return ctx.JSON(http.StatusInternalServerError, dto.NewErrorResponse(
-			"Internal server error", nil,
-		))
+		return ctx.JSON(http.StatusInternalServerError, dto.NewCodedError("Internal server error", dto.CodeInternal))
 	}
 
 	if !ensureRoundRunning(ctx, question.Round) {
 		return nil
+	}
+
+	if user.RoundQualified != question.Round {
+		return ctx.JSON(http.StatusForbidden, dto.NewCodedError("User not qualified for this round", dto.CodeNotQualified))
 	}
 
 	attemptResp, err := c.createAttempt(
@@ -77,19 +69,14 @@ func (c *AttemptController) CreateAttempt(ctx echo.Context) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrAttemptAlreadyExists):
-			return ctx.JSON(http.StatusConflict, dto.NewErrorResponse(
-				"Attempt already exists", nil,
-			))
+			return ctx.JSON(http.StatusConflict, dto.NewCodedError("Attempt already exists", dto.CodeConflict))
 
 		case errors.Is(err, ErrInsufficientBalance):
-			return ctx.JSON(http.StatusPaymentRequired, dto.NewErrorResponse(
-				"Insufficient balance", nil,
-			))
+			return ctx.JSON(http.StatusPaymentRequired, dto.NewCodedError("Insufficient balance", dto.CodeInsufficient))
 
 		default:
-			return ctx.JSON(http.StatusInternalServerError, dto.NewErrorResponse(
-				"Internal server error", nil,
-			))
+			logging.Errorf("create attempt: %v", err)
+			return ctx.JSON(http.StatusInternalServerError, dto.NewCodedError("Internal server error", dto.CodeInternal))
 		}
 	}
 

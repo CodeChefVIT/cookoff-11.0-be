@@ -13,6 +13,8 @@ func Logger(next echo.HandlerFunc) echo.HandlerFunc {
 
 		err := next(c)
 		if err != nil {
+			// Render it here so the logged status is the real one; returning
+			// nil below stops Echo from handling the same error twice.
 			c.Error(err)
 		}
 
@@ -28,6 +30,6 @@ func Logger(next echo.HandlerFunc) echo.HandlerFunc {
 			Error:   err,
 		})
 
-		return err
+		return nil
 	}
 }

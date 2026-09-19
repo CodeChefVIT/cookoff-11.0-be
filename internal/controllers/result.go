@@ -14,7 +14,6 @@ import (
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/db/sqlc"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
-	"github.com/CodeChefVIT/cookoff-11.0-be/internal/middlewares"
 )
 
 func GetResult(c echo.Context) error {
@@ -22,29 +21,24 @@ func GetResult(c echo.Context) error {
 
 	submissionID, err := uuid.Parse(c.Param("submission_id"))
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, dto.NewErrorResponse(err.Error(), nil))
+		return c.JSON(http.StatusBadRequest, dto.NewCodedError("Invalid submission ID", dto.CodeValidation))
 	}
 
 	submission, err := db.Queries.GetSubmissionByID(ctx, submissionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return c.JSON(http.StatusNotFound, dto.NewErrorResponse("Submission not found", nil))
+			return c.JSON(http.StatusNotFound, dto.NewCodedError("Submission not found", dto.CodeNotFound))
 		}
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to get submission from database", nil))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to get submission", dto.CodeInternal))
 	}
 
-	userIDStr, ok := c.Get(middlewares.UserIDKey).(string)
-	if !ok || userIDStr == "" {
-		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Unauthorized", nil))
-	}
-
-	userID, err := uuid.Parse(userIDStr)
+	uid, err := userID(c)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Invalid user id", nil))
+		return c.JSON(http.StatusUnauthorized, dto.NewCodedError("Unauthorized", dto.CodeUnauthorized))
 	}
 
-	if userID != submission.UserID {
-		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Submission not owned by user", nil))
+	if uid != submission.UserID {
+		return c.JSON(http.StatusForbidden, dto.NewCodedError("Submission not owned by user", dto.CodeForbidden))
 	}
 
 	// Long-poll until the verdict is terminal. The portal issues exactly one
@@ -61,7 +55,7 @@ func GetResult(c echo.Context) error {
 	// timer. The slow fallback tick only covers a missed notification.
 
 	// The server-wide WriteTimeout (15s) would cut the connection long before
-	// the 120s long-poll deadline, so extend it for this request only.
+	// the long-poll deadline, so extend it for this request only.
 	_ = http.NewResponseController(c.Response()).SetWriteDeadline(time.Now().Add(resultLongPollTimeout + 10*time.Second))
 
 	// Register before the first check so a verdict landing in between is not missed.
@@ -81,7 +75,7 @@ func GetResult(c echo.Context) error {
 		if !isPendingStatus(submission.Status) {
 			res, resErr := getSubmissionResult(ctx, submission)
 			if resErr != nil {
-				return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch submission result", nil))
+				return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to fetch submission result", dto.CodeInternal))
 			}
 			return c.JSON(http.StatusOK, dto.NewSuccessResponse("Submission fetched successfully", res))
 		}
@@ -92,7 +86,7 @@ func GetResult(c echo.Context) error {
 			return nil
 		case <-deadline:
 			// The portal maps 408 to its "Check again" affordance.
-			return c.JSON(http.StatusRequestTimeout, dto.NewErrorResponse("Submission is still being judged", nil))
+			return c.JSON(http.StatusRequestTimeout, dto.NewCodedError("Submission is still being judged", "STILL_JUDGING"))
 		case <-done:
 		case <-fallback.C:
 		}
@@ -100,16 +94,18 @@ func GetResult(c echo.Context) error {
 		submission, err = db.Queries.GetSubmissionByID(ctx, submissionID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				return c.JSON(http.StatusNotFound, dto.NewErrorResponse("Submission not found", nil))
+				return c.JSON(http.StatusNotFound, dto.NewCodedError("Submission not found", dto.CodeNotFound))
 			}
-			return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to get submission from database", nil))
+			return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to get submission", dto.CodeInternal))
 		}
 	}
 }
 
 const (
-	// Comfortably inside the portal's 130s axios timeout (api/submissions.ts).
-	resultLongPollTimeout = 120 * time.Second
+	// Under Cloudflare's 100s proxy timeout (a longer hold turns into a 524
+	// the portal cannot read) and the portal's 100s axios timeout
+	// (api/submissions.ts). Nginx in front needs proxy_read_timeout >= 100s.
+	resultLongPollTimeout = 90 * time.Second
 	// Safety net for a lost pub/sub message (e.g. across a Redis reconnect);
 	// the normal wake-up is the worker's publish.
 	resultFallbackInterval = 5 * time.Second

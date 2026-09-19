@@ -107,7 +107,7 @@ SELECT
     bounty_active
 FROM questions
 WHERE round = $1
-ORDER BY title ASC, id ASC
+ORDER BY points ASC, title ASC, id ASC
 `
 
 type ListQuestionsByRoundRow struct {

@@ -53,30 +53,32 @@ func (ac *AuthController) GoogleCallback(c echo.Context) error {
 	validState := auth.ValidateState(stateCookie, c.QueryParam("state"))
 	c.SetCookie(auth.ClearStateCookie())
 	if err != nil || !validState || c.QueryParam("code") == "" {
-		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Invalid OAuth callback", nil))
+		return loginFailed(c, "oauth_failed")
 	}
 	identity, err := ac.googleIdentity(c.Request().Context(), c.QueryParam("code"))
 	if err != nil {
 		logging.Errorf("Google authentication failed: %v", err)
-		return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Google authentication failed", nil))
+		return loginFailed(c, "oauth_failed")
 	}
 	user, err := ac.findUser(c.Request().Context(), identity)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Account is not registered", nil))
+			return loginFailed(c, "not_registered")
 		}
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Unable to establish session", nil))
+		logging.Errorf("OAuth find user: %v", err)
+		return loginFailed(c, "server_error")
 	}
 	if user.IsBanned {
 		for _, cookie := range auth.ClearSessionCookies() {
 			c.SetCookie(cookie)
 		}
 
-		return c.JSON(http.StatusForbidden, dto.NewErrorResponse("Account is banned", nil))
+		return loginFailed(c, "banned")
 	}
 	cookies, err := auth.SessionCookies(auth.User{ID: user.ID.String(), Email: user.Email, Role: user.Role})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Unable to establish session", nil))
+		logging.Errorf("OAuth session cookies: %v", err)
+		return loginFailed(c, "server_error")
 	}
 	for _, cookie := range cookies {
 		c.SetCookie(cookie)
@@ -103,7 +105,7 @@ func (ac *AuthController) RefreshToken(c echo.Context) error {
 	}
 	cookies, err := auth.SessionCookies(auth.User{ID: user.ID.String(), Email: user.Email, Role: user.Role})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Unable to refresh session", nil))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Unable to refresh session", dto.CodeInternal))
 	}
 	for _, sessionCookie := range cookies {
 		c.SetCookie(sessionCookie)
@@ -123,7 +125,7 @@ func (ac *AuthController) unauthorized(c echo.Context) error {
 		c.SetCookie(cookie)
 	}
 
-	return c.JSON(http.StatusUnauthorized, dto.NewErrorResponse("Unauthorized", nil))
+	return c.JSON(http.StatusUnauthorized, dto.NewCodedError("Unauthorized", dto.CodeUnauthorized))
 }
 
 type googleIdentity struct{ Subject, Email, Name string }
@@ -208,6 +210,9 @@ func (ac *AuthController) findUser(ctx context.Context, identity googleIdentity)
 	// No account claimed by this Google identity yet: check for a
 	// pre-seeded account matching the verified email and link it.
 	user, err = ac.queries.GetUserByEmail(ctx, identity.Email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ac.createUser(ctx, identity)
+	}
 	if err != nil {
 		return sqlc.User{}, err
 	}
@@ -216,6 +221,47 @@ func (ac *AuthController) findUser(ctx context.Context, identity googleIdentity)
 		return sqlc.User{}, err
 	}
 	return linked, nil
+}
+
+// newUserBalance is the starting balance of an account created on first login.
+const newUserBalance = 2000
+
+// createUser registers a first-time Google sign-in that has no seeded
+// account. The email doubles as the reg no until an organiser sets it. Two
+// racing first logins insert once; the loser reads the winner's row.
+func (ac *AuthController) createUser(ctx context.Context, identity googleIdentity) (sqlc.User, error) {
+	balance, err := utils.Float64ToNumeric(newUserBalance)
+	if err != nil {
+		return sqlc.User{}, err
+	}
+	name := strings.TrimSpace(identity.Name)
+	if name == "" {
+		name, _, _ = strings.Cut(identity.Email, "@")
+	}
+	googleID := identity.Subject
+	user, err := ac.queries.CreateUserFromGoogle(ctx, sqlc.CreateUserFromGoogleParams{
+		ID:       uuid.New(),
+		Email:    identity.Email,
+		RegNo:    identity.Email,
+		Name:     name,
+		GoogleID: &googleID,
+		Balance:  balance,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ac.queries.GetUserByGoogleID(ctx, &googleID)
+	}
+	if err != nil {
+		return sqlc.User{}, err
+	}
+	logging.Infof("Created user %s on first login", user.ID)
+	return user, nil
+}
+
+// loginFailed sends the browser back to the portal's login page with a
+// reason code instead of stranding it on a JSON error from the API domain.
+func loginFailed(c echo.Context, reason string) error {
+	target := strings.TrimRight(utils.Config.FrontendURL, "/") + "/login?" + url.Values{"error": {reason}}.Encode()
+	return c.Redirect(http.StatusFound, target)
 }
 
 func redirectURL(role string) string {

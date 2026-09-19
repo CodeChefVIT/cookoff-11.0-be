@@ -53,20 +53,13 @@ func main() {
 
 	// Register request validator
 	e.Validator = utils.NewValidator()
+	e.HTTPErrorHandler = middlewares.HTTPErrorHandler
+	e.IPExtractor = middlewares.ClientIP()
 
 	// Setup middlewares
 	e.Use(emiddleware.Recover())
 	e.Use(middlewares.Logger)
 	e.Use(emiddleware.Secure())
-	e.Use(middlewares.RateLimiter(middlewares.RateLimiterConfig{
-		Max:    utils.Config.RateLimitMax,
-		Window: utils.Config.RateLimitWindow,
-		Skipper: func(c echo.Context) bool {
-			p := c.Path()
-			return p == "/judge0callback" || p == "/health"
-		},
-	}))
-	e.Use(emiddleware.BodyLimit("10M"))
 
 	// Configure CORS
 	if len(utils.CORSOrigins) > 0 {
@@ -78,6 +71,21 @@ func main() {
 		}))
 		logging.Infof("CORS enabled for origins: %v", utils.CORSOrigins)
 	}
+
+	// After CORS so a 429 still carries the CORS headers the browser needs to
+	// read it.
+	e.Use(middlewares.RateLimiter(middlewares.RateLimiterConfig{
+		Global: middlewares.Limit{Max: utils.Config.RateLimitMax, Window: utils.Config.RateLimitWindow},
+		// Per-user budgets for the routes that cost a Judge0 run.
+		Routes: map[string]middlewares.Limit{
+			"POST /submit":        {Max: 1, Window: 5 * time.Second},
+			"POST /runcode":       {Max: 1, Window: 3 * time.Second},
+			"POST /runcustom":     {Max: 1, Window: 3 * time.Second},
+			"POST /submit/visual": {Max: 1, Window: 2 * time.Second},
+		},
+		Skipper: middlewares.RateLimitSkipper,
+	}))
+	e.Use(emiddleware.BodyLimit("10M"))
 
 	// Register routes
 	router.RegisterRoutes(e)

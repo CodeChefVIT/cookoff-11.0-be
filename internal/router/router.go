@@ -27,7 +27,9 @@ func RegisterRoutes(e *echo.Echo) {
 	e.GET("/api/v1/auth/google", authController.StartGoogle)
 	e.GET("/api/v1/auth/google/callback", authController.GoogleCallback)
 	e.POST("/refreshToken", authController.RefreshToken)
-	e.POST("/logout", authController.Logout, middlewares.VerifyJWTMiddleware)
+	// No JWT check: logging out must clear the cookies even once the access
+	// token has expired.
+	e.POST("/logout", authController.Logout)
 
 	// submit & result routes
 	e.POST("/submit", controllers.SubmitCode, authenticated...)

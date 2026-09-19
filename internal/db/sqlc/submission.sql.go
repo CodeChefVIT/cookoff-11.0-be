@@ -55,6 +55,16 @@ func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionPara
 	return err
 }
 
+const deleteSubmission = `-- name: DeleteSubmission :exec
+DELETE FROM submissions
+WHERE id = $1
+`
+
+func (q *Queries) DeleteSubmission(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteSubmission, id)
+	return err
+}
+
 const getBestScoreForQuestion = `-- name: GetBestScoreForQuestion :one
 SELECT (
 	COALESCE(
@@ -139,16 +149,4 @@ func (q *Queries) GetSubmissionForUpdate(ctx context.Context, id uuid.UUID) (Sub
 		&i.Status,
 	)
 	return i, err
-}
-
-const getSubmissionStatusByID = `-- name: GetSubmissionStatusByID :one
-SELECT status FROM submissions
-WHERE id = $1
-`
-
-func (q *Queries) GetSubmissionStatusByID(ctx context.Context, id uuid.UUID) (*string, error) {
-	row := q.db.QueryRow(ctx, getSubmissionStatusByID, id)
-	var status *string
-	err := row.Scan(&status)
-	return status, err
 }

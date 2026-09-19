@@ -14,7 +14,7 @@ func GetTime(c echo.Context) error {
 	res, err := timer.GetTime(c.Request().Context())
 	if err != nil {
 		logging.Errorf("GetTime failed: %v", err)
-		return c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to fetch contest timer", err.Error()))
+		return c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to fetch contest timer", dto.CodeInternal))
 	}
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Contest timer fetched successfully", res))
 }
@@ -27,10 +27,10 @@ func ensureRoundRunning(c echo.Context, round int32) bool {
 		return true
 	}
 	if errors.Is(err, timer.ErrRoundNotRunning) {
-		_ = c.JSON(http.StatusLocked, dto.NewErrorResponse("Round is not running", nil))
+		_ = c.JSON(http.StatusLocked, dto.NewCodedError("Round is not running", dto.CodeRoundNotRunning))
 		return false
 	}
 	logging.Errorf("round running check failed: %v", err)
-	_ = c.JSON(http.StatusInternalServerError, dto.NewErrorResponse("Failed to check round timer", nil))
+	_ = c.JSON(http.StatusInternalServerError, dto.NewCodedError("Failed to check round timer", dto.CodeInternal))
 	return false
 }

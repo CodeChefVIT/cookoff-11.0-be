@@ -1,15 +1,17 @@
+// Package timer owns the contest clock. It lives in Redis so every API
+// replica agrees on it. Reads never write: whether a round is running is
+// derived from its stored window, so a player's poll can never race an
+// admin action and stop a round that was just started.
 package timer
 
 import (
 	"context"
 	"errors"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/dto"
 	"github.com/CodeChefVIT/cookoff-11.0-be/internal/helpers/utils"
-	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -23,48 +25,106 @@ const (
 	DefaultDuration int64 = 3600 // 1 hour in seconds
 )
 
-// In-memory fallback if Redis is not initialized
-var (
-	memMu        sync.RWMutex
-	memRound     int32 = DefaultRound
-	memDuration  int64 = DefaultDuration
-	memStartTime string
-	memEndTime   string
-	memIsRunning bool
-)
+var errNoRedis = errors.New("redis client is not initialized")
 
+// ErrRoundNotRunning means the contest timer is stopped or running a different round.
+var ErrRoundNotRunning = errors.New("round is not running")
+
+// state is the raw clock as stored in Redis.
+type state struct {
+	round    int32
+	duration int64
+	started  bool // is_running flag: set by StartRound, cleared by a stop
+	start    string
+	end      string
+}
+
+func load(ctx context.Context) (state, error) {
+	if utils.RedisClient == nil {
+		return state{}, errNoRedis
+	}
+	vals, err := utils.RedisClient.MGet(ctx, KeyRound, KeyDuration, KeyIsRunning, KeyStartTime, KeyEndTime).Result()
+	if err != nil {
+		return state{}, err
+	}
+	str := func(v interface{}) string {
+		s, _ := v.(string)
+		return s
+	}
+	s := state{round: DefaultRound, duration: DefaultDuration}
+	if r, perr := strconv.ParseInt(str(vals[0]), 10, 32); perr == nil && r > 0 {
+		s.round = int32(r)
+	}
+	if d, perr := strconv.ParseInt(str(vals[1]), 10, 64); perr == nil && d > 0 {
+		s.duration = d
+	}
+	s.started = str(vals[2]) == "true"
+	s.start = str(vals[3])
+	s.end = str(vals[4])
+	return s, nil
+}
+
+// window returns the round's end, deriving it from start+duration when the
+// end key is missing.
+func (s state) window() (start, end time.Time, ok bool) {
+	start, startErr := time.Parse(time.RFC3339, s.start)
+	end, endErr := time.Parse(time.RFC3339, s.end)
+	if endErr != nil && startErr == nil {
+		end, endErr = start.Add(time.Duration(s.duration)*time.Second), nil
+	}
+	return start, end, endErr == nil
+}
+
+func (s state) response(now time.Time) dto.TimerResponse {
+	res := dto.TimerResponse{Round: s.round, Duration: s.duration}
+	start, end, ok := s.window()
+	if !ok {
+		// Never started (or the window was cleared by a reset).
+		return res
+	}
+	endStr := end.Format(time.RFC3339)
+	res.EndTime = &endStr
+	if !start.IsZero() {
+		startStr := start.Format(time.RFC3339)
+		res.StartTime = &startStr
+	}
+	if s.started && now.Before(end) {
+		res.IsRunning = true
+		res.TimeLeft = int64(end.Sub(now).Seconds())
+	}
+	// A stopped or expired round keeps its window so "ended" stays
+	// distinguishable from "not started".
+	return res
+}
+
+func GetTime(ctx context.Context) (dto.TimerResponse, error) {
+	s, err := load(ctx)
+	if err != nil {
+		return dto.TimerResponse{}, err
+	}
+	return s.response(time.Now().UTC()), nil
+}
+
+// SetTime selects the round and its duration, leaving the clock stopped with
+// no window ("not started").
 func SetTime(ctx context.Context, round int32, durationSeconds int64) (dto.TimerResponse, error) {
+	s, err := load(ctx)
+	if err != nil {
+		return dto.TimerResponse{}, err
+	}
 	if round <= 0 {
-		round = GetCurrentRound(ctx)
+		round = s.round
 	}
 	if durationSeconds <= 0 {
-		durationSeconds = GetCurrentDuration(ctx)
+		durationSeconds = s.duration
 	}
 
-	if utils.RedisClient == nil {
-		memMu.Lock()
-		defer memMu.Unlock()
-		memRound = round
-		memDuration = durationSeconds
-		memIsRunning = false
-		memStartTime = ""
-		memEndTime = ""
-		return dto.TimerResponse{
-			Round:     round,
-			IsRunning: false,
-			Duration:  durationSeconds,
-			TimeLeft:  durationSeconds,
-		}, nil
-	}
-
-	pipe := utils.RedisClient.Pipeline()
+	pipe := utils.RedisClient.TxPipeline()
 	pipe.Set(ctx, KeyRound, round, 0)
 	pipe.Set(ctx, KeyDuration, durationSeconds, 0)
 	pipe.Set(ctx, KeyIsRunning, "false", 0)
-	pipe.Del(ctx, KeyStartTime)
-	pipe.Del(ctx, KeyEndTime)
-	_, err := pipe.Exec(ctx)
-	if err != nil {
+	pipe.Del(ctx, KeyStartTime, KeyEndTime)
+	if _, err = pipe.Exec(ctx); err != nil {
 		return dto.TimerResponse{}, err
 	}
 
@@ -76,383 +136,82 @@ func SetTime(ctx context.Context, round int32, durationSeconds int64) (dto.Timer
 	}, nil
 }
 
-func UpdateTime(ctx context.Context, additionalSeconds int64, newDurationSeconds *int64) (dto.TimerResponse, error) {
-	currentStatus, err := GetTime(ctx)
+// UpdateTime adds (or, when negative, removes) time on the current round.
+// While the round is running its end moves with it.
+func UpdateTime(ctx context.Context, additionalSeconds int64) (dto.TimerResponse, error) {
+	s, err := load(ctx)
 	if err != nil {
 		return dto.TimerResponse{}, err
 	}
+	now := time.Now().UTC()
+	current := s.response(now)
 
-	duration := currentStatus.Duration
-	if newDurationSeconds != nil && *newDurationSeconds > 0 {
-		duration = *newDurationSeconds
-	} else if additionalSeconds != 0 {
-		duration += additionalSeconds
-		if duration < 0 {
-			duration = 0
-		}
+	duration := s.duration + additionalSeconds
+	if duration < 0 {
+		duration = 0
 	}
 
-	isRunning := currentStatus.IsRunning
-	var startTimeStr, endTimeStr *string
-	var timeLeft int64 = 0
-
-	if isRunning && currentStatus.EndTime != nil {
-		endT, parseErr := time.Parse(time.RFC3339, *currentStatus.EndTime)
-		if parseErr == nil {
-			var newEndT time.Time
-			if additionalSeconds != 0 {
-				newEndT = endT.Add(time.Duration(additionalSeconds) * time.Second)
-			} else if newDurationSeconds != nil && currentStatus.StartTime != nil {
-				startT, sErr := time.Parse(time.RFC3339, *currentStatus.StartTime)
-				if sErr == nil {
-					newEndT = startT.Add(time.Duration(duration) * time.Second)
-				} else {
-					newEndT = endT
-				}
-			} else {
-				newEndT = endT
-			}
-
-			now := time.Now().UTC()
-			if now.After(newEndT) {
-				isRunning = false
-				timeLeft = 0
-			} else {
-				timeLeft = int64(newEndT.Sub(now).Seconds())
-			}
-
-			formatted := newEndT.Format(time.RFC3339)
-			endTimeStr = &formatted
-			startTimeStr = currentStatus.StartTime
-		}
-	}
-
-	if utils.RedisClient == nil {
-		memMu.Lock()
-		defer memMu.Unlock()
-		memDuration = duration
-		memIsRunning = isRunning
-		if startTimeStr != nil {
-			memStartTime = *startTimeStr
-		} else {
-			memStartTime = ""
-		}
-		if endTimeStr != nil {
-			memEndTime = *endTimeStr
-		} else {
-			memEndTime = ""
-		}
-		return dto.TimerResponse{
-			Round:     currentStatus.Round,
-			IsRunning: isRunning,
-			Duration:  duration,
-			StartTime: startTimeStr,
-			EndTime:   endTimeStr,
-			TimeLeft:  timeLeft,
-		}, nil
-	}
-
-	pipe := utils.RedisClient.Pipeline()
+	pipe := utils.RedisClient.TxPipeline()
 	pipe.Set(ctx, KeyDuration, duration, 0)
-	if isRunning {
-		pipe.Set(ctx, KeyIsRunning, "true", 0)
-		if endTimeStr != nil {
-			pipe.Set(ctx, KeyEndTime, *endTimeStr, 0)
-		}
-	} else {
-		pipe.Set(ctx, KeyIsRunning, "false", 0)
-		if currentStatus.IsRunning {
-			pipe.Del(ctx, KeyStartTime)
-			pipe.Del(ctx, KeyEndTime)
-		}
+	if current.IsRunning {
+		_, end, _ := s.window()
+		newEnd := end.Add(time.Duration(additionalSeconds) * time.Second)
+		pipe.Set(ctx, KeyEndTime, newEnd.Format(time.RFC3339), 0)
+		s.end = newEnd.Format(time.RFC3339)
 	}
-	_, execErr := pipe.Exec(ctx)
-	if execErr != nil {
-		return dto.TimerResponse{}, execErr
+	if _, err = pipe.Exec(ctx); err != nil {
+		return dto.TimerResponse{}, err
 	}
 
-	return dto.TimerResponse{
-		Round:     currentStatus.Round,
-		IsRunning: isRunning,
-		Duration:  duration,
-		StartTime: startTimeStr,
-		EndTime:   endTimeStr,
-		TimeLeft:  timeLeft,
-	}, nil
+	s.duration = duration
+	return s.response(now), nil
 }
 
+// StartRound starts round (or the configured one) now for the configured duration.
 func StartRound(ctx context.Context, round *int32) (dto.TimerResponse, error) {
-	currentRound := GetCurrentRound(ctx)
+	s, err := load(ctx)
+	if err != nil {
+		return dto.TimerResponse{}, err
+	}
 	if round != nil && *round > 0 {
-		currentRound = *round
+		s.round = *round
 	}
 
-	duration := GetCurrentDuration(ctx)
 	now := time.Now().UTC()
-	endTime := now.Add(time.Duration(duration) * time.Second)
+	s.started = true
+	s.start = now.Format(time.RFC3339)
+	s.end = now.Add(time.Duration(s.duration) * time.Second).Format(time.RFC3339)
 
-	startTimeStr := now.Format(time.RFC3339)
-	endTimeStr := endTime.Format(time.RFC3339)
-
-	if utils.RedisClient == nil {
-		memMu.Lock()
-		defer memMu.Unlock()
-		memRound = currentRound
-		memDuration = duration
-		memIsRunning = true
-		memStartTime = startTimeStr
-		memEndTime = endTimeStr
-		return dto.TimerResponse{
-			Round:     currentRound,
-			IsRunning: true,
-			Duration:  duration,
-			StartTime: &startTimeStr,
-			EndTime:   &endTimeStr,
-			TimeLeft:  duration,
-		}, nil
-	}
-
-	pipe := utils.RedisClient.Pipeline()
-	pipe.Set(ctx, KeyRound, currentRound, 0)
-	pipe.Set(ctx, KeyDuration, duration, 0)
+	pipe := utils.RedisClient.TxPipeline()
+	pipe.Set(ctx, KeyRound, s.round, 0)
+	pipe.Set(ctx, KeyDuration, s.duration, 0)
+	pipe.Set(ctx, KeyStartTime, s.start, 0)
+	pipe.Set(ctx, KeyEndTime, s.end, 0)
 	pipe.Set(ctx, KeyIsRunning, "true", 0)
-	pipe.Set(ctx, KeyStartTime, startTimeStr, 0)
-	pipe.Set(ctx, KeyEndTime, endTimeStr, 0)
-	_, err := pipe.Exec(ctx)
-	if err != nil {
+	if _, err = pipe.Exec(ctx); err != nil {
 		return dto.TimerResponse{}, err
 	}
-
-	return dto.TimerResponse{
-		Round:     currentRound,
-		IsRunning: true,
-		Duration:  duration,
-		StartTime: &startTimeStr,
-		EndTime:   &endTimeStr,
-		TimeLeft:  duration,
-	}, nil
+	return s.response(now), nil
 }
 
+// ResetRound stops the clock and clears the window ("not started").
 func ResetRound(ctx context.Context) (dto.TimerResponse, error) {
-	currentRound := GetCurrentRound(ctx)
-	duration := GetCurrentDuration(ctx)
-
-	if utils.RedisClient == nil {
-		memMu.Lock()
-		defer memMu.Unlock()
-		memIsRunning = false
-		memStartTime = ""
-		memEndTime = ""
-		return dto.TimerResponse{
-			Round:     currentRound,
-			IsRunning: false,
-			Duration:  duration,
-			TimeLeft:  0,
-		}, nil
-	}
-
-	pipe := utils.RedisClient.Pipeline()
-	pipe.Set(ctx, KeyIsRunning, "false", 0)
-	pipe.Del(ctx, KeyStartTime)
-	pipe.Del(ctx, KeyEndTime)
-	_, err := pipe.Exec(ctx)
+	s, err := load(ctx)
 	if err != nil {
 		return dto.TimerResponse{}, err
 	}
 
-	return dto.TimerResponse{
-		Round:     currentRound,
-		IsRunning: false,
-		Duration:  duration,
-		TimeLeft:  0,
-	}, nil
-}
-
-func GetTime(ctx context.Context) (dto.TimerResponse, error) {
-	if utils.RedisClient == nil {
-		memMu.RLock()
-		round := memRound
-		duration := memDuration
-		isRunning := memIsRunning
-		startStr := memStartTime
-		endStr := memEndTime
-		memMu.RUnlock()
-
-		if !isRunning {
-			// Same reasoning as the Redis path: a stopped round keeps its window
-			// so "ended" stays distinguishable from "not started".
-			return dto.TimerResponse{
-				Round:     round,
-				IsRunning: false,
-				Duration:  duration,
-				StartTime: optionalTime(startStr),
-				EndTime:   optionalTime(endStr),
-				TimeLeft:  0,
-			}, nil
-		}
-
-		now := time.Now().UTC()
-		var endT time.Time
-		var parseErr error
-
-		if endStr != "" {
-			endT, parseErr = time.Parse(time.RFC3339, endStr)
-		} else {
-			parseErr = errors.New("missing end time")
-		}
-
-		if parseErr != nil {
-			// If EndTime is missing or invalid, try calculating from StartTime + duration
-			if startStr != "" {
-				if startT, sErr := time.Parse(time.RFC3339, startStr); sErr == nil {
-					endT = startT.Add(time.Duration(duration) * time.Second)
-					parseErr = nil
-					endStr = endT.Format(time.RFC3339)
-				}
-			}
-		}
-
-		if parseErr != nil || endT.IsZero() {
-			memMu.Lock()
-			memIsRunning = false
-			memStartTime = ""
-			memEndTime = ""
-			memMu.Unlock()
-			return dto.TimerResponse{
-				Round:     round,
-				IsRunning: false,
-				Duration:  duration,
-				TimeLeft:  0,
-			}, nil
-		}
-
-		if now.After(endT) {
-			memMu.Lock()
-			memIsRunning = false
-			memMu.Unlock()
-			return dto.TimerResponse{
-				Round:     round,
-				IsRunning: false,
-				Duration:  duration,
-				StartTime: &startStr,
-				EndTime:   &endStr,
-				TimeLeft:  0,
-			}, nil
-		}
-
-		remaining := int64(endT.Sub(now).Seconds())
-		return dto.TimerResponse{
-			Round:     round,
-			IsRunning: true,
-			Duration:  duration,
-			StartTime: &startStr,
-			EndTime:   &endStr,
-			TimeLeft:  remaining,
-		}, nil
-	}
-
-	round := GetCurrentRound(ctx)
-	duration := GetCurrentDuration(ctx)
-
-	isRunningVal, err := utils.RedisClient.Get(ctx, KeyIsRunning).Result()
-	if err != nil && err != redis.Nil {
+	pipe := utils.RedisClient.TxPipeline()
+	pipe.Set(ctx, KeyIsRunning, "false", 0)
+	pipe.Del(ctx, KeyStartTime, KeyEndTime)
+	if _, err = pipe.Exec(ctx); err != nil {
 		return dto.TimerResponse{}, err
 	}
-	isRunning := isRunningVal == "true"
 
-	startStr, _ := utils.RedisClient.Get(ctx, KeyStartTime).Result()
-	endStr, err := utils.RedisClient.Get(ctx, KeyEndTime).Result()
-
-	if !isRunning {
-		// Keep whatever window Redis still holds. A stopped round *with* an end
-		// time has finished; one *without* has not started — dropping the times
-		// here made those two states indistinguishable to the portal, which
-		// then showed "begins shortly" for a round that had just closed.
-		// SetTime/ResetRound delete both keys, so "not started" stays correct.
-		return dto.TimerResponse{
-			Round:     round,
-			IsRunning: false,
-			Duration:  duration,
-			StartTime: optionalTime(startStr),
-			EndTime:   optionalTime(endStr),
-			TimeLeft:  0,
-		}, nil
-	}
-
-	now := time.Now().UTC()
-	var endT time.Time
-	var parseErr error
-
-	if err == nil && endStr != "" {
-		endT, parseErr = time.Parse(time.RFC3339, endStr)
-	} else {
-		parseErr = errors.New("missing end time")
-	}
-
-	if parseErr != nil {
-		// If EndTime is missing or invalid, try calculating from StartTime + duration
-		if startStr != "" {
-			if startT, sErr := time.Parse(time.RFC3339, startStr); sErr == nil {
-				endT = startT.Add(time.Duration(duration) * time.Second)
-				parseErr = nil
-				endStr = endT.Format(time.RFC3339)
-				_ = utils.RedisClient.Set(ctx, KeyEndTime, endStr, 0).Err()
-			}
-		}
-	}
-
-	if parseErr != nil || endT.IsZero() {
-		pipe := utils.RedisClient.Pipeline()
-		pipe.Set(ctx, KeyIsRunning, "false", 0)
-		pipe.Del(ctx, KeyStartTime)
-		pipe.Del(ctx, KeyEndTime)
-		_, _ = pipe.Exec(ctx)
-
-		return dto.TimerResponse{
-			Round:     round,
-			IsRunning: false,
-			Duration:  duration,
-			TimeLeft:  0,
-		}, nil
-	}
-
-	if now.After(endT) {
-		_ = utils.RedisClient.Set(ctx, KeyIsRunning, "false", 0).Err()
-		return dto.TimerResponse{
-			Round:     round,
-			IsRunning: false,
-			Duration:  duration,
-			StartTime: &startStr,
-			EndTime:   &endStr,
-			TimeLeft:  0,
-		}, nil
-	}
-
-	remaining := int64(endT.Sub(now).Seconds())
-	return dto.TimerResponse{
-		Round:     round,
-		IsRunning: true,
-		Duration:  duration,
-		StartTime: &startStr,
-		EndTime:   &endStr,
-		TimeLeft:  remaining,
-	}, nil
+	return dto.TimerResponse{Round: s.round, Duration: s.duration}, nil
 }
-
-// optionalTime returns nil for an unset timestamp so the JSON carries `null`
-// rather than an empty string the portal would try to parse as a date.
-func optionalTime(value string) *string {
-	if value == "" {
-		return nil
-	}
-	return &value
-}
-
-// ErrRoundNotRunning means the contest timer is stopped or running a different round.
-var ErrRoundNotRunning = errors.New("round is not running")
 
 // EnsureRoundRunning returns ErrRoundNotRunning unless the contest timer is currently running round.
-// GetTime already flips an expired round to not running, so time-outs are covered too.
 func EnsureRoundRunning(ctx context.Context, round int32) error {
 	status, err := GetTime(ctx)
 	if err != nil {
@@ -462,38 +221,4 @@ func EnsureRoundRunning(ctx context.Context, round int32) error {
 		return ErrRoundNotRunning
 	}
 	return nil
-}
-
-func GetCurrentRound(ctx context.Context) int32 {
-	if utils.RedisClient == nil {
-		memMu.RLock()
-		defer memMu.RUnlock()
-		return memRound
-	}
-	val, err := utils.RedisClient.Get(ctx, KeyRound).Result()
-	if err != nil {
-		return DefaultRound
-	}
-	parsed, err := strconv.ParseInt(val, 10, 32)
-	if err != nil || parsed <= 0 {
-		return DefaultRound
-	}
-	return int32(parsed)
-}
-
-func GetCurrentDuration(ctx context.Context) int64 {
-	if utils.RedisClient == nil {
-		memMu.RLock()
-		defer memMu.RUnlock()
-		return memDuration
-	}
-	val, err := utils.RedisClient.Get(ctx, KeyDuration).Result()
-	if err != nil {
-		return DefaultDuration
-	}
-	parsed, err := strconv.ParseInt(val, 10, 64)
-	if err != nil || parsed <= 0 {
-		return DefaultDuration
-	}
-	return parsed
 }
