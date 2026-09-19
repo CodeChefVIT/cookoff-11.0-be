@@ -465,10 +465,10 @@ func (qc *QuestionController) CreateVisualBlock(c echo.Context) error {
 		return questionError(c, http.StatusBadRequest, "Invalid question ID")
 	}
 	var req VisualBlockRequest
-	if e := c.Bind(&req); e != nil {
+	if bindErr := c.Bind(&req); bindErr != nil {
 		return questionError(c, http.StatusBadRequest, "Invalid request body")
 	}
-	if e := c.Validate(&req); e != nil {
+	if validationErr := c.Validate(&req); validationErr != nil {
 		return questionError(c, http.StatusBadRequest, "Validation failed")
 	}
 	block, e := qc.queries.CreateVisualBlock(c.Request().Context(), sqlc.CreateVisualBlockParams{ID: uuid.New(), QuestionID: qid, Content: req.Content})
@@ -485,10 +485,10 @@ func (qc *QuestionController) CreateVisualSolution(c echo.Context) error {
 		return questionError(c, http.StatusBadRequest, "Invalid question ID")
 	}
 	var req VisualSolutionRequest
-	if e := c.Bind(&req); e != nil {
+	if bindErr := c.Bind(&req); bindErr != nil {
 		return questionError(c, http.StatusBadRequest, "Invalid request body")
 	}
-	if e := c.Validate(&req); e != nil {
+	if validationErr := c.Validate(&req); validationErr != nil {
 		return questionError(c, http.StatusBadRequest, "Validation failed")
 	}
 	pts, e := utils.Float64ToNumeric(req.Points)
