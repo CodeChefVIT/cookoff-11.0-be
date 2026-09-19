@@ -3,7 +3,7 @@ info:
   title: Cookoff 11.0 Backend API
   version: 1.0.0
   description: >
-    Production-grade API documentation for CodeChefVIT Cookoff 11.0 Backend, built with Go Echo v4, PostgreSQL, Redis, and Judge0.
+    CodeChefVIT Cookoff 11.0 Backend API documentation, extracted directly from Go Echo v4 source code (`cookoff-11.0-be`).
 servers:
   - url: http://localhost:8080
     description: Local development server
@@ -18,10 +18,14 @@ tags:
     description: Code submission, execution via Judge0, and result querying
   - name: Visual Submissions
     description: Round 1 block-based Scratch question attempts and submissions
+  - name: Attempts & Buy-Ins
+    description: Question attempts and round 2 buy-in unlocks
   - name: Questions
-    description: Question listing, question details, and Scratch visual blocks
+    description: Participant question listing, question details, and Scratch visual blocks
   - name: Testcases
     description: Public sample testcases and administrative testcase management
+  - name: Admin Question Management
+    description: Administrative question creation, update, deletion, and bounty management
   - name: Admin User Management
     description: User moderation, banning/unbanning, manual round upgrades, and bulk round promotions
   - name: Admin Contest Control
@@ -86,9 +90,35 @@ paths:
             type: string
       responses:
         '302':
-          description: Redirect to frontend dashboard upon successful authentication.
+          description: Redirect to frontend dashboard upon successful authentication or login error redirect (?error=...).
         '401':
           description: Invalid authentication code or unauthorized domain.
+
+  /api/v1/auth/google:
+    get:
+      tags:
+        - Auth
+      summary: Initiate Google OAuth flow (Legacy Alias)
+      description: Alias for `/auth/google` to support legacy Google Console redirect URIs.
+      responses:
+        '302':
+          description: Redirect to Google authorization URL.
+
+  /api/v1/auth/google/callback:
+    get:
+      tags:
+        - Auth
+      summary: Google OAuth callback handler (Legacy Alias)
+      description: Alias for `/auth/google/callback`.
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to frontend dashboard.
 
   /refreshToken:
     post:
@@ -108,8 +138,6 @@ paths:
         - Auth
       summary: User logout
       description: Invalidates active JWT session and clears cookies.
-      security:
-        - CookieAuth: []
       responses:
         '200':
           description: Logged out successfully.
@@ -119,7 +147,7 @@ paths:
       tags:
         - Dashboard & Timer
       summary: Fetch participant dashboard summary
-      description: Returns participant profile, current balance, score, qualified round, and per-round status breakdown.
+      description: Returns participant profile, current balance, score, qualified round, and per-question attempt status.
       security:
         - CookieAuth: []
       responses:
@@ -128,7 +156,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DashboardResponse'
+                $ref: '#/components/schemas/DashboardResponseEnvelope'
         '401':
           description: Unauthorized or missing authentication cookie.
 
@@ -137,7 +165,7 @@ paths:
       tags:
         - Dashboard & Timer
       summary: Get active contest timer status
-      description: Returns current active contest round, timer status (running/paused), duration, and remaining seconds.
+      description: Returns current active contest round, timer status (running/paused), duration, start/end time, and remaining seconds.
       security:
         - CookieAuth: []
       responses:
@@ -146,14 +174,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TimerResponse'
+                $ref: '#/components/schemas/TimerResponseEnvelope'
 
   /submit:
     post:
       tags:
         - Submissions & Results
       summary: Submit code for judging (Round 2 and Round 3)
-      description: Submits source code for a Round 2 or 3 coding question to Judge0 for asynchronous batch evaluation.
+      description: Submits source code for a Round 2 or 3 coding question to Judge0 for evaluation.
       security:
         - CookieAuth: []
       requestBody:
@@ -173,16 +201,18 @@ paths:
                 data:
                   submission_id: "7f9e4210-91ab-4c3e-812d-0123456789ab"
         '400':
-          description: Invalid request payload, missing testcases, or attempting Round 1 submission via code endpoint.
+          description: Invalid payload or attempting Round 1 submission via code endpoint (VALIDATION).
         '403':
-          description: User not qualified for question round or question not purchased.
+          description: User not qualified for question round (NOT_QUALIFIED) or question not purchased (NOT_PURCHASED).
+        '423':
+          description: Contest timer is not currently running for this round (ROUND_NOT_RUNNING).
 
   /result/{submission_id}:
     get:
       tags:
         - Submissions & Results
-      summary: Poll code submission result
-      description: Fetches judgment status and per-testcase execution results for a submission ID.
+      summary: Get code submission verdict (Server Long Polling)
+      description: Holds connection up to 90s until terminal verdict is published via Redis or database query completes.
       security:
         - CookieAuth: []
       parameters:
@@ -194,16 +224,22 @@ paths:
             format: uuid
       responses:
         '200':
-          description: Submission result retrieved.
+          description: Terminal submission result retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultResponseEnvelope'
         '404':
-          description: Submission ID not found.
+          description: Submission ID not found (NOT_FOUND).
+        '408':
+          description: Submission is still being evaluated by Judge0 worker (STILL_JUDGING).
 
-  /question/submit/visual:
+  /submit/visual:
     post:
       tags:
         - Visual Submissions
       summary: Submit Round 1 Scratch visual solution
-      description: Submits arranged visual block IDs for a Round 1 question and evaluates against valid solutions.
+      description: Submits arranged visual block IDs for a Round 1 question and evaluates against valid solutions inline.
       security:
         - CookieAuth: []
       requestBody:
@@ -215,13 +251,19 @@ paths:
       responses:
         '200':
           description: Solution submitted successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitVisualSolutionResponseEnvelope'
         '400':
-          description: Invalid block IDs or empty block sequence.
+          description: Invalid block IDs or empty block sequence (VALIDATION).
+        '423':
+          description: Contest timer is not currently running for Round 1 (ROUND_NOT_RUNNING).
 
-  /question/{id}/attempt:
+  /attempts/{id}:
     post:
       tags:
-        - Visual Submissions
+        - Attempts & Buy-Ins
       summary: Create or purchase question attempt
       description: Deducts question buy_in cost (if applicable) and marks question as attempted/bought.
       security:
@@ -230,32 +272,23 @@ paths:
         - name: id
           in: path
           required: true
+          description: Question ID to unlock or attempt
           schema:
             type: string
             format: uuid
       responses:
         '200':
-          description: Question attempt created or already active.
+          description: Attempt created or unlocked successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttemptResponseEnvelope'
         '402':
-          description: Insufficient balance for question buy_in.
-
-    get:
-      tags:
-        - Visual Submissions
-      summary: Get question attempt status
-      description: Checks if the participant has bought or answered the specified question.
-      security:
-        - CookieAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Attempt status retrieved.
+          description: Insufficient balance for question buy_in (INSUFFICIENT_BALANCE).
+        '409':
+          description: Question attempt already unlocked or active (ALREADY_EXISTS).
+        '423':
+          description: Contest timer is not currently running for this round (ROUND_NOT_RUNNING).
 
   /runcode:
     post:
@@ -279,8 +312,8 @@ paths:
     post:
       tags:
         - Submissions & Results
-      summary: Run code against custom user input
-      description: Executes user source code against custom stdin input string via Judge0 sandbox.
+      summary: Run code against custom user input (stdin)
+      description: Synchronously executes source code against custom stdin input string via Judge0 sandbox.
       security:
         - CookieAuth: []
       requestBody:
@@ -288,7 +321,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RunCustomRequest'
+              $ref: '#/components/schemas/CustomSubmissionRequest'
       responses:
         '200':
           description: Custom execution completed.
@@ -298,7 +331,7 @@ paths:
       tags:
         - Questions
       summary: List questions for qualified round
-      description: Returns all questions available for the logged-in user's current qualified round.
+      description: Returns all questions available for the logged-in user's current qualified round (`WHERE q.round = u.round_qualified`).
       security:
         - CookieAuth: []
       responses:
@@ -331,7 +364,7 @@ paths:
       tags:
         - Questions
       summary: List Scratch visual blocks for Round 1 question
-      description: Fetches all available visual code blocks for a specified Round 1 question.
+      description: Fetches all available visual code blocks for a specified Round 1 question (`WHERE q.round = 1 AND q.q_type = 'visual'`).
       security:
         - CookieAuth: []
       parameters:
@@ -350,7 +383,7 @@ paths:
       tags:
         - Testcases
       summary: Get public testcases for a question
-      description: Returns non-hidden sample testcases for preview in the workspace editor.
+      description: Returns non-hidden sample testcases (`WHERE hidden = false`) for preview in the workspace editor.
       security:
         - CookieAuth: []
       parameters:
@@ -364,12 +397,225 @@ paths:
         '200':
           description: Public testcases retrieved.
 
+  /question:
+    get:
+      tags:
+        - Admin Question Management
+      summary: List all questions (Admin)
+      description: Administrative endpoint returning all questions across all rounds.
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Questions list retrieved.
+
+    post:
+      tags:
+        - Admin Question Management
+      summary: Create new question (Admin)
+      description: Creates a new problem statement with specified round, points, buy_in, and reward.
+      security:
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionRequest'
+      responses:
+        '200':
+          description: Question created.
+
+  /question/{id}:
+    put:
+      tags:
+        - Admin Question Management
+      summary: Update question (Admin)
+      description: Updates existing question fields.
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuestionRequest'
+      responses:
+        '200':
+          description: Question updated.
+
+    delete:
+      tags:
+        - Admin Question Management
+      summary: Delete question (Admin)
+      description: Deletes question by ID.
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Question deleted.
+
+  /question/{id}/bounty/activate:
+    post:
+      tags:
+        - Admin Question Management
+      summary: Activate bounty for question (Admin)
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Bounty activated.
+
+  /question/{id}/bounty/deactivate:
+    post:
+      tags:
+        - Admin Question Management
+      summary: Deactivate bounty for question (Admin)
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Bounty deactivated.
+
+  /question/{id}/testcases:
+    get:
+      tags:
+        - Testcases
+      summary: Get all testcases for question (Admin)
+      description: Returns both public and hidden testcases for a question.
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Testcases list retrieved.
+
+  /testcase:
+    post:
+      tags:
+        - Testcases
+      summary: Create testcase (Admin)
+      security:
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestcaseRequest'
+      responses:
+        '200':
+          description: Testcase created.
+
+  /testcase/{id}:
+    get:
+      tags:
+        - Testcases
+      summary: Get testcase by ID (Admin)
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Testcase retrieved.
+
+    put:
+      tags:
+        - Testcases
+      summary: Update testcase (Admin)
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestcaseUpdateRequest'
+      responses:
+        '200':
+          description: Testcase updated.
+
+    delete:
+      tags:
+        - Testcases
+      summary: Delete testcase (Admin)
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Testcase deleted.
+
+  /admin/session:
+    get:
+      tags:
+        - Admin Contest Control
+      summary: Verify admin session
+      description: Verifies active JWT session has `admin` role.
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Admin session active.
+
   /admin/users:
     get:
       tags:
         - Admin User Management
-      summary: List all registered users
-      description: Administrative endpoint returning all users with role, ban status, balance, and score.
+      summary: List all registered users (Admin)
       security:
         - CookieAuth: []
       responses:
@@ -380,8 +626,7 @@ paths:
     post:
       tags:
         - Admin User Management
-      summary: Ban participant
-      description: Sets user is_banned flag to true, immediately revoking access via BanCheck middleware.
+      summary: Ban participant (Admin)
       security:
         - CookieAuth: []
       parameters:
@@ -393,14 +638,13 @@ paths:
             format: uuid
       responses:
         '200':
-          description: User banned successfully.
+          description: User banned.
 
   /admin/users/{id}/unban:
     post:
       tags:
         - Admin User Management
-      summary: Unban participant
-      description: Re-enables a banned user account.
+      summary: Unban participant (Admin)
       security:
         - CookieAuth: []
       parameters:
@@ -412,14 +656,13 @@ paths:
             format: uuid
       responses:
         '200':
-          description: User unbanned successfully.
+          description: User unbanned.
 
   /admin/users/{id}/upgrade:
     post:
       tags:
         - Admin User Management
-      summary: Upgrade single user round
-      description: Manually promotes a specific user's round_qualified integer.
+      summary: Upgrade single user round (Admin)
       security:
         - CookieAuth: []
       parameters:
@@ -433,11 +676,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                round_qualified:
-                  type: integer
-                  example: 2
+              $ref: '#/components/schemas/UpgradeUserRequest'
       responses:
         '200':
           description: User upgraded.
@@ -446,8 +685,7 @@ paths:
     post:
       tags:
         - Admin User Management
-      summary: Bulk upgrade all users to round
-      description: Promotes all non-banned users to target round in a single SQL operation.
+      summary: Bulk upgrade all users to round (Admin)
       security:
         - CookieAuth: []
       requestBody:
@@ -458,21 +696,30 @@ paths:
       responses:
         '200':
           description: All non-banned users upgraded.
-          content:
-            application/json:
-              example:
-                success: true
-                message: "All non-banned users upgraded successfully"
-                data:
-                  round_qualified: 2
-                  users_upgraded: 150
+
+  /admin/users/{id}/submissions:
+    get:
+      tags:
+        - Admin User Management
+      summary: Get submissions for user (Admin)
+      security:
+        - CookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User submissions retrieved.
 
   /admin/leaderboard:
     get:
       tags:
         - Admin Contest Control
-      summary: Fetch contest leaderboard
-      description: Returns overall cumulative leaderboard ordered by total score DESC, runtime ASC.
+      summary: Fetch contest leaderboard (Admin)
       security:
         - CookieAuth: []
       responses:
@@ -483,8 +730,7 @@ paths:
     get:
       tags:
         - Admin Contest Control
-      summary: Fetch contest analytics
-      description: Returns system-wide statistics including active users, total submissions, pass rate, and language breakdown.
+      summary: Fetch contest analytics (Admin)
       security:
         - CookieAuth: []
       responses:
@@ -495,8 +741,7 @@ paths:
     post:
       tags:
         - Admin Contest Control
-      summary: Configure contest round timer
-      description: Sets current active round and duration in seconds or minutes.
+      summary: Configure contest round timer (Admin)
       security:
         - CookieAuth: []
       requestBody:
@@ -509,12 +754,28 @@ paths:
         '200':
           description: Contest timer configured.
 
+  /admin/updateTime:
+    post:
+      tags:
+        - Admin Contest Control
+      summary: Update active contest round timer (Admin)
+      security:
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTimeRequest'
+      responses:
+        '200':
+          description: Contest timer updated.
+
   /admin/startRound:
     post:
       tags:
         - Admin Contest Control
-      summary: Start round timer
-      description: Activates countdown timer for current contest round.
+      summary: Start round timer (Admin)
       security:
         - CookieAuth: []
       responses:
@@ -525,8 +786,7 @@ paths:
     post:
       tags:
         - Admin Contest Control
-      summary: Reset round timer
-      description: Pauses and resets active round timer.
+      summary: Reset round timer (Admin)
       security:
         - CookieAuth: []
       responses:
@@ -552,18 +812,6 @@ components:
       description: HTTP-only JWT access token cookie set upon OAuth login.
 
   schemas:
-    SuccessResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-          example: true
-        message:
-          type: string
-          example: "Operation successful"
-        data:
-          type: object
-
     ErrorResponse:
       type: object
       properties:
@@ -573,32 +821,67 @@ components:
         message:
           type: string
           example: "Error explanation message"
+        code:
+          type: string
+          enum:
+            - VALIDATION
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - NOT_FOUND
+            - ALREADY_EXISTS
+            - RATE_LIMITED
+            - INTERNAL
+            - ROUND_NOT_RUNNING
+            - NOT_QUALIFIED
+            - NOT_PURCHASED
+            - INSUFFICIENT_BALANCE
+            - JUDGE_BUSY
+            - JUDGE_FAILED
+            - STILL_JUDGING
+          example: "ROUND_NOT_RUNNING"
         errors:
           type: array
           items:
             type: object
 
-    DashboardRoundStatus:
+    DashboardQuestion:
       type: object
       properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        points:
+          type: integer
         round:
           type: integer
-          example: 1
-        status:
+        attempt_status:
           type: string
-          enum: [open, locked, closed]
-          example: "open"
-        questions_completed:
-          type: integer
-          example: 3
-        questions_incomplete:
-          type: integer
-          example: 0
-        score:
-          type: integer
-          example: 100
+          enum: [available, bought, answered]
 
     DashboardResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+        balance:
+          type: string
+        score:
+          type: string
+        round_qualified:
+          type: integer
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardQuestion'
+
+    DashboardResponseEnvelope:
       type: object
       properties:
         success:
@@ -606,52 +889,37 @@ components:
           example: true
         message:
           type: string
-          example: "Dashboard retrieved"
         data:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-              example: "e43b1234-5678-4900-a890-123456789abc"
-            name:
-              type: string
-              example: "Fixture User"
-            email:
-              type: string
-              example: "fixture-user@vitstudent.ac.in"
-            balance:
-              type: string
-              example: "40"
-            score:
-              type: string
-              example: "120"
-            round_qualified:
-              type: integer
-              example: 2
-            current_round:
-              type: integer
-              example: 2
-            round_status:
-              type: array
-              items:
-                $ref: '#/components/schemas/DashboardRoundStatus'
+          $ref: '#/components/schemas/DashboardResponse'
 
     TimerResponse:
       type: object
       properties:
         round:
           type: integer
-          example: 2
         is_running:
           type: boolean
-          example: true
         duration:
           type: integer
-          example: 3600
+        start_time:
+          type: string
+          nullable: true
+        end_time:
+          type: string
+          nullable: true
         time_left:
           type: integer
-          example: 2450
+
+    TimerResponseEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/TimerResponse'
 
     SubmissionRequest:
       type: object
@@ -663,13 +931,23 @@ components:
         question_id:
           type: string
           format: uuid
-          example: "a1b2c3d4-e5f6-7890-abcd-ef0123456789"
         language_id:
           type: integer
-          example: 71
         source_code:
           type: string
-          example: "#include <iostream>\nusing namespace std;\nint main() { cout << \"Hello World\"; return 0; }"
+
+    CustomSubmissionRequest:
+      type: object
+      required:
+        - language_id
+        - source_code
+      properties:
+        source_code:
+          type: string
+        language_id:
+          type: integer
+        stdin:
+          type: string
 
     SubmitVisualSolutionRequest:
       type: object
@@ -686,36 +964,221 @@ components:
             type: string
             format: uuid
 
-    RunCustomRequest:
+    SubmitVisualSolutionResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        points_awarded:
+          type: number
+        note:
+          type: string
+        correct:
+          type: boolean
+        already_answered:
+          type: boolean
+
+    SubmitVisualSolutionResponseEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/SubmitVisualSolutionResponse'
+
+    AttemptResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        question_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        new_balance:
+          type: number
+        is_buy_in_paid:
+          type: boolean
+
+    AttemptResponseEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/AttemptResponse'
+
+    TestcaseResult:
+      type: object
+      properties:
+        id:
+          type: string
+        runtime:
+          type: number
+        memory:
+          type: number
+        status:
+          type: string
+        description:
+          type: string
+
+    ResultResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        question_id:
+          type: string
+        passed:
+          type: integer
+        failed:
+          type: integer
+        runtime:
+          type: number
+        memory:
+          type: number
+        submission_time:
+          type: string
+        description:
+          type: string
+        testcases:
+          type: array
+          items:
+            $ref: '#/components/schemas/TestcaseResult'
+
+    ResultResponseEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ResultResponse'
+
+    QuestionRequest:
       type: object
       required:
-        - language_id
-        - source_code
-        - custom_input
+        - title
+        - description
+        - type
       properties:
-        language_id:
+        title:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+        input_format:
+          type: array
+          items:
+            type: string
+        buy_in:
+          type: number
+        reward:
+          type: number
+        points:
           type: integer
-          example: 71
-        source_code:
+        round:
+          type: integer
+        constraints:
+          type: array
+          items:
+            type: string
+        output_format:
+          type: array
+          items:
+            type: string
+        sample_test_input:
+          type: array
+          items:
+            type: string
+        sample_test_output:
+          type: array
+          items:
+            type: string
+        explanation:
+          type: array
+          items:
+            type: string
+        bounty_active:
+          type: boolean
+
+    TestcaseRequest:
+      type: object
+      required:
+        - question_id
+        - input
+        - expected_output
+      properties:
+        question_id:
           type: string
-          example: "print(input())"
-        custom_input:
+          format: uuid
+        input:
           type: string
-          example: "Hello Antigravity"
+        expected_output:
+          type: string
+        memory:
+          type: number
+        runtime:
+          type: number
+        hidden:
+          type: boolean
+
+    TestcaseUpdateRequest:
+      type: object
+      properties:
+        question_id:
+          type: string
+          format: uuid
+        input:
+          type: string
+        expected_output:
+          type: string
+        memory:
+          type: number
+        runtime:
+          type: number
+        hidden:
+          type: boolean
 
     SetTimeRequest:
       type: object
       properties:
         round:
           type: integer
-          example: 2
-        duration_minutes:
+        duration_seconds:
           type: integer
-          example: 60
+
+    UpdateTimeRequest:
+      type: object
+      properties:
+        additional_seconds:
+          type: integer
+
+    UpgradeUserRequest:
+      type: object
+      properties:
+        round:
+          type: integer
+        round_qualified:
+          type: integer
+        role:
+          type: string
 
     UpgradeAllUsersRequest:
       type: object
       properties:
         target_round:
           type: integer
-          example: 2
+        round:
+          type: integer
