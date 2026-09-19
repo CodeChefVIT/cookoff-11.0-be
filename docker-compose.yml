@@ -1,4 +1,4 @@
-name: cookoff-11
+version: '3.8'
 
 services:
   postgres:
