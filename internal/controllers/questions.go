@@ -23,6 +23,7 @@ import (
 type questionReader interface {
 	GetQuestionByID(context.Context, uuid.UUID) (sqlc.GetQuestionByIDRow, error)
 	ListVisualBlocksByQuestionID(context.Context, uuid.UUID) ([]sqlc.VisualBlock, error)
+	ListVisualSolutionsByQuestionID(context.Context, uuid.UUID) ([]sqlc.VisualSolution, error)
 }
 
 type questionQueries interface {
@@ -138,7 +139,8 @@ func cachedQuestion(ctx context.Context, queries questionReader, qid uuid.UUID) 
 				scratchBlocks = append(scratchBlocks, b.Content)
 			}
 		}
-		return questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, scratchBlocks), nil
+		solutions, solutionPoints := buildSolutions(ctx, queries, qid)
+		return questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, scratchBlocks, solutions, solutionPoints), nil
 	})
 }
 
@@ -163,7 +165,8 @@ func (qc *QuestionController) ListByRound(c echo.Context) error {
 			for _, b := range blocks {
 				scratchBlocks = append(scratchBlocks, b.Content)
 			}
-			out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, scratchBlocks)
+			solutions, solutionPoints := buildSolutions(ctx, qc.queries, q.ID)
+			out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, scratchBlocks, solutions, solutionPoints)
 		}
 		return out, nil
 	})
@@ -179,12 +182,13 @@ func (qc *QuestionController) ListAll(c echo.Context) error {
 	}
 	out := make([]dto.QuestionResponse, len(rows))
 	for i, q := range rows {
-		blocks, _ := qc.queries.ListVisualBlocksByQuestionID(ctx, q.ID)
+		blocks, _ := qc.queries.ListVisualBlocksByQuestionID(c.Request().Context(), q.ID)
 		var scratchBlocks []string
 		for _, b := range blocks {
 			scratchBlocks = append(scratchBlocks, b.Content)
 		}
-		out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, scratchBlocks)
+		solutions, solutionPoints := buildSolutions(c.Request().Context(), qc.queries, q.ID)
+		out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, scratchBlocks, solutions, solutionPoints)
 	}
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Questions retrieved", out))
 }
@@ -268,7 +272,8 @@ func (qc *QuestionController) Create(c echo.Context) error {
 		}
 	}
 	utils.InvalidateContentCache(c.Request().Context())
-	return c.JSON(201, dto.NewSuccessResponse("Question created", questionFromModel(q)))
+	sols, sPts := buildSolutions(c.Request().Context(), qc.queries, q.ID)
+	return c.JSON(201, dto.NewSuccessResponse("Question created", questionFromModel(q, sols, sPts)))
 }
 func (qc *QuestionController) Update(c echo.Context) error {
 	id, e := parseQuestionID(c)
@@ -325,7 +330,8 @@ func (qc *QuestionController) Update(c echo.Context) error {
 		}
 	}
 	utils.InvalidateContentCache(c.Request().Context())
-	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Question updated", questionFromModel(q)))
+	sols, sPts := buildSolutions(c.Request().Context(), qc.queries, id)
+	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Question updated", questionFromModel(q, sols, sPts)))
 }
 func (qc *QuestionController) Delete(c echo.Context) error {
 	id, e := parseQuestionID(c)
@@ -356,7 +362,8 @@ func (qc *QuestionController) SetBounty(active bool) echo.HandlerFunc {
 			return questionError(c, http.StatusInternalServerError, "Failed to update bounty")
 		}
 		utils.InvalidateContentCache(c.Request().Context())
-		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Bounty updated", questionFromModel(q)))
+		sols, sPts := buildSolutions(c.Request().Context(), qc.queries, id)
+		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Bounty updated", questionFromModel(q, sols, sPts)))
 	}
 }
 func questionParams(id uuid.UUID, r dto.QuestionRequest) sqlc.CreateQuestionParams {
@@ -369,11 +376,40 @@ func questionParams(id uuid.UUID, r dto.QuestionRequest) sqlc.CreateQuestionPara
 	}
 	return p
 }
-func questionFromModel(q sqlc.Question) dto.QuestionResponse {
-	return questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, nil)
+func questionFromModel(q sqlc.Question, solutions [][]int, solutionPoints []float64) dto.QuestionResponse {
+	return questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, nil, solutions, solutionPoints)
 }
-func questionFromRow(id uuid.UUID, d, t, typ string, in []string, buy, reward interface{}, pts, rnd int32, cons, out, sin, sout, exp []string, active bool, scratchBlocks []string) dto.QuestionResponse {
-	return dto.QuestionResponse{ID: id, Description: d, Title: t, Type: typ, InputFormat: in, BuyIn: textValue(buy), Reward: textValue(reward), Points: pts, Round: rnd, Constraints: cons, OutputFormat: out, SampleTestInput: sin, SampleTestOutput: sout, Explanation: exp, BountyActive: active, ScratchBlocks: scratchBlocks}
+func questionFromRow(id uuid.UUID, d, t, typ string, in []string, buy, reward interface{}, pts, rnd int32, cons, out, sin, sout, exp []string, active bool, scratchBlocks []string, solutions [][]int, solutionPoints []float64) dto.QuestionResponse {
+	return dto.QuestionResponse{ID: id, Description: d, Title: t, Type: typ, InputFormat: in, BuyIn: textValue(buy), Reward: textValue(reward), Points: pts, Round: rnd, Constraints: cons, OutputFormat: out, SampleTestInput: sin, SampleTestOutput: sout, Explanation: exp, BountyActive: active, ScratchBlocks: scratchBlocks, Solutions: solutions, SolutionPoints: solutionPoints}
+}
+func buildSolutions(ctx context.Context, queries questionReader, questionID uuid.UUID) ([][]int, []float64) {
+	blocks, err := queries.ListVisualBlocksByQuestionID(ctx, questionID)
+	var blockIndexMap map[uuid.UUID]int
+	if err == nil {
+		blockIndexMap = make(map[uuid.UUID]int)
+		for i, b := range blocks {
+			blockIndexMap[b.ID] = i
+		}
+	}
+	sols, err := queries.ListVisualSolutionsByQuestionID(ctx, questionID)
+	if err != nil || len(sols) == 0 {
+		return [][]int{}, []float64{}
+	}
+	var solutions [][]int
+	var solutionPoints []float64
+	for _, sol := range sols {
+		indices := []int{}
+		var pts float64
+		for _, blkID := range sol.Solution {
+			if idx, ok := blockIndexMap[blkID]; ok {
+				indices = append(indices, idx)
+			}
+		}
+		pts, _ = utils.NumericToFloat64(sol.Points)
+		solutions = append(solutions, indices)
+		solutionPoints = append(solutionPoints, pts)
+	}
+	return solutions, solutionPoints
 }
 func textValue(v interface{}) string {
 	switch x := v.(type) {

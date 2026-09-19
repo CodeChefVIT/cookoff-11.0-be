@@ -213,10 +213,7 @@ func (c *VisualSubmissionController) submitVisualSolution(
 	for _, solution := range solutions {
 		if uuidSlicesEqual(solution.Solution, req.Blocks) {
 			isCorrect = true
-			solutionPoints, err = utils.NumericToFloat64(solution.Points)
-			if err != nil {
-				return visualOutcome{}, err
-			}
+			solutionPoints, _ = utils.NumericToFloat64(solution.Points)
 			break
 		}
 	}
