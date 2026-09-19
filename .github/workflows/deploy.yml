@@ -26,7 +26,7 @@ jobs:
             cd ~/cookoff-11.0-be
 
             echo "Pulling latest code..."
-            git pull origin main
+            git pull origin prod
 
             echo "Building containers..."
             docker compose build
