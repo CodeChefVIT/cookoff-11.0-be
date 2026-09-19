@@ -3,7 +3,7 @@ name: Deploy CookOff Backend
 on:
   push:
     branches:
-      - main
+      - prod
 
 concurrency:
   group: production-deploy
