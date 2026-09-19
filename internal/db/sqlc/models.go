@@ -61,6 +61,7 @@ type SubmissionResult struct {
 	PointsAwarded int32
 	Status        string
 	Description   *string
+	Stdout        *string
 }
 
 type Testcase struct {

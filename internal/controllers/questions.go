@@ -36,11 +36,11 @@ type questionQueries interface {
 	DeleteQuestion(context.Context, uuid.UUID) (uuid.UUID, error)
 	SetQuestionBountyActive(context.Context, sqlc.SetQuestionBountyActiveParams) (sqlc.Question, error)
 	CreateVisualBlock(context.Context, sqlc.CreateVisualBlockParams) (sqlc.VisualBlock, error)
-	DeleteVisualBlock(context.Context, sqlc.DeleteVisualBlockParams) error
-	DeleteVisualBlocksByQuestionID(context.Context, sqlc.DeleteVisualBlocksByQuestionIDParams) error
+	DeleteVisualBlock(context.Context, uuid.UUID) error
+	DeleteVisualBlocksByQuestionID(context.Context, uuid.UUID) error
 	CreateVisualSolution(context.Context, sqlc.CreateVisualSolutionParams) (sqlc.VisualSolution, error)
-	DeleteVisualSolution(context.Context, sqlc.DeleteVisualSolutionParams) error
-	DeleteVisualSolutionsByQuestionID(context.Context, sqlc.DeleteVisualSolutionsByQuestionIDParams) error
+	DeleteVisualSolution(context.Context, uuid.UUID) error
+	DeleteVisualSolutionsByQuestionID(context.Context, uuid.UUID) error
 	WithTx(tx pgx.Tx) *sqlc.Queries
 }
 
@@ -313,7 +313,7 @@ func (qc *QuestionController) Update(c echo.Context) error {
 	}
 	defer func() { _ = tx.Rollback(c.Request().Context()) }()
 	qtx := qc.queries.WithTx(tx)
-	e = qtx.DeleteVisualBlocksByQuestionID(c.Request().Context(), sqlc.DeleteVisualBlocksByQuestionIDParams{QuestionID: id})
+	e = qtx.DeleteVisualBlocksByQuestionID(c.Request().Context(), id)
 	if e != nil {
 		return questionError(c, http.StatusInternalServerError, "Failed to delete visual blocks", e)
 	}
@@ -325,7 +325,7 @@ func (qc *QuestionController) Update(c echo.Context) error {
 		}
 		blockIDs = append(blockIDs, b.ID)
 	}
-	e = qtx.DeleteVisualSolutionsByQuestionID(c.Request().Context(), sqlc.DeleteVisualSolutionsByQuestionIDParams{QuestionID: id})
+	e = qtx.DeleteVisualSolutionsByQuestionID(c.Request().Context(), id)
 	if e != nil {
 		return questionError(c, http.StatusInternalServerError, "Failed to delete visual solutions", e)
 	}
@@ -508,7 +508,7 @@ func (qc *QuestionController) DeleteVisualBlock(c echo.Context) error {
 	if e != nil {
 		return questionError(c, http.StatusBadRequest, "Invalid block ID")
 	}
-	if e := qc.queries.DeleteVisualBlock(c.Request().Context(), sqlc.DeleteVisualBlockParams{ID: id}); e != nil {
+	if e := qc.queries.DeleteVisualBlock(c.Request().Context(), id); e != nil {
 		return questionError(c, http.StatusInternalServerError, "Failed to delete visual block", e)
 	}
 	_, _ = qc.db.Exec(c.Request().Context(), "UPDATE visual_solutions SET solution = array_remove(solution, $1) WHERE $2 = ANY(solution)", id, id)
@@ -521,7 +521,7 @@ func (qc *QuestionController) DeleteVisualSolution(c echo.Context) error {
 	if e != nil {
 		return questionError(c, http.StatusBadRequest, "Invalid solution ID")
 	}
-	if e := qc.queries.DeleteVisualSolution(c.Request().Context(), sqlc.DeleteVisualSolutionParams{ID: id}); e != nil {
+	if e := qc.queries.DeleteVisualSolution(c.Request().Context(), id); e != nil {
 		return questionError(c, http.StatusInternalServerError, "Failed to delete visual solution", e)
 	}
 	utils.InvalidateContentCache(c.Request().Context())
