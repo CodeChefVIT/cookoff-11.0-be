@@ -44,8 +44,8 @@ type questionQueries interface {
 	WithTx(tx pgx.Tx) *sqlc.Queries
 }
 
-type QuestionController struct{
-	db     *pgxpool.Pool
+type QuestionController struct {
+	db      *pgxpool.Pool
 	queries questionQueries
 }
 
@@ -385,12 +385,12 @@ func (qc *QuestionController) SetBounty(active bool) echo.HandlerFunc {
 		if e != nil {
 			return questionError(c, http.StatusInternalServerError, "Failed to update bounty")
 		}
-	utils.InvalidateContentCache(c.Request().Context())
-	blocks, _ := qc.queries.ListVisualBlocksByQuestionID(c.Request().Context(), id)
-	sols, _ := qc.queries.ListVisualSolutionsByQuestionID(c.Request().Context(), id)
-	solved, sPts := buildSolutions(blocks, sols)
-	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Bounty updated", questionFromModel(q, solved, sPts)))
-}
+		utils.InvalidateContentCache(c.Request().Context())
+		blocks, _ := qc.queries.ListVisualBlocksByQuestionID(c.Request().Context(), id)
+		sols, _ := qc.queries.ListVisualSolutionsByQuestionID(c.Request().Context(), id)
+		solved, sPts := buildSolutions(blocks, sols)
+		return c.JSON(http.StatusOK, dto.NewSuccessResponse("Bounty updated", questionFromModel(q, solved, sPts)))
+	}
 }
 func questionParams(id uuid.UUID, r dto.QuestionRequest) sqlc.CreateQuestionParams {
 	p := sqlc.CreateQuestionParams{ID: id, Description: r.Description, Title: r.Title, QType: r.Type, InputFormat: r.InputFormat, Points: r.Points, Round: r.Round, Constraints: r.Constraints, OutputFormat: r.OutputFormat, SampleTestInput: r.SampleTestInput, SampleTestOutput: r.SampleTestOutput, Explanation: r.Explanation, BountyActive: r.BountyActive}
@@ -456,7 +456,7 @@ type VisualBlockRequest struct {
 
 type VisualSolutionRequest struct {
 	Solution []uuid.UUID `json:"solution" validate:"required"`
-	Points     float64     `json:"points" validate:"gte=0"`
+	Points   float64     `json:"points" validate:"gte=0"`
 }
 
 func (qc *QuestionController) CreateVisualBlock(c echo.Context) error {

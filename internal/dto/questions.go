@@ -25,22 +25,22 @@ type QuestionResponse struct {
 }
 
 type QuestionRequest struct {
-	Description      string   `json:"description" validate:"required"`
-	Title            string   `json:"title" validate:"required"`
-	Type             string   `json:"type" validate:"required"`
-	InputFormat      []string `json:"input_format"`
-	BuyIn            *float64 `json:"buy_in"`
-	Reward           *float64 `json:"reward"`
-	Points           int32    `json:"points" validate:"gte=0"`
-	Round            int32    `json:"round" validate:"gte=0"`
-	Constraints      []string `json:"constraints"`
-	OutputFormat     []string `json:"output_format"`
-	SampleTestInput  []string `json:"sample_test_input"`
-	SampleTestOutput []string `json:"sample_test_output"`
-	Explanation      []string `json:"explanation"`
-	BountyActive     bool     `json:"bounty_active"`
-	ScratchBlocks    []string `json:"scratch_blocks"`
-	Solutions        [][]int  `json:"solutions"`
+	Description      string    `json:"description" validate:"required"`
+	Title            string    `json:"title" validate:"required"`
+	Type             string    `json:"type" validate:"required"`
+	InputFormat      []string  `json:"input_format"`
+	BuyIn            *float64  `json:"buy_in"`
+	Reward           *float64  `json:"reward"`
+	Points           int32     `json:"points" validate:"gte=0"`
+	Round            int32     `json:"round" validate:"gte=0"`
+	Constraints      []string  `json:"constraints"`
+	OutputFormat     []string  `json:"output_format"`
+	SampleTestInput  []string  `json:"sample_test_input"`
+	SampleTestOutput []string  `json:"sample_test_output"`
+	Explanation      []string  `json:"explanation"`
+	BountyActive     bool      `json:"bounty_active"`
+	ScratchBlocks    []string  `json:"scratch_blocks"`
+	Solutions        [][]int   `json:"solutions"`
 	SolutionPoints   []float64 `json:"solution_points"`
 }
 
