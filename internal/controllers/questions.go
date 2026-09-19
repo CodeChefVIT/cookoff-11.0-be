@@ -158,7 +158,12 @@ func (qc *QuestionController) ListByRound(c echo.Context) error {
 		}
 		out := make([]dto.QuestionResponse, len(rows))
 		for i, q := range rows {
-			out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, nil)
+			blocks, _ := qc.queries.ListVisualBlocksByQuestionID(ctx, q.ID)
+			var scratchBlocks []string
+			for _, b := range blocks {
+				scratchBlocks = append(scratchBlocks, b.Content)
+			}
+			out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, scratchBlocks)
 		}
 		return out, nil
 	})
@@ -174,7 +179,12 @@ func (qc *QuestionController) ListAll(c echo.Context) error {
 	}
 	out := make([]dto.QuestionResponse, len(rows))
 	for i, q := range rows {
-		out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, nil)
+		blocks, _ := qc.queries.ListVisualBlocksByQuestionID(ctx, q.ID)
+		var scratchBlocks []string
+		for _, b := range blocks {
+			scratchBlocks = append(scratchBlocks, b.Content)
+		}
+		out[i] = questionFromRow(q.ID, q.Description, q.Title, q.QType, q.InputFormat, q.BuyIn, q.Reward, q.Points, q.Round, q.Constraints, q.OutputFormat, q.SampleTestInput, q.SampleTestOutput, q.Explanation, q.BountyActive, scratchBlocks)
 	}
 	return c.JSON(http.StatusOK, dto.NewSuccessResponse("Questions retrieved", out))
 }
