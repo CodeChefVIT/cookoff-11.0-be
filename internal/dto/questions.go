@@ -19,6 +19,9 @@ type QuestionResponse struct {
 	SampleTestOutput []string  `json:"sample_test_output,omitempty"`
 	Explanation      []string  `json:"explanation,omitempty"`
 	BountyActive     bool      `json:"bounty_active"`
+	ScratchBlocks    []string  `json:"scratch_blocks,omitempty"`
+	Solutions        [][]int   `json:"solutions,omitempty"`
+	SolutionPoints   []float64 `json:"solution_points,omitempty"`
 }
 
 type QuestionRequest struct {
@@ -36,6 +39,9 @@ type QuestionRequest struct {
 	SampleTestOutput []string `json:"sample_test_output"`
 	Explanation      []string `json:"explanation"`
 	BountyActive     bool     `json:"bounty_active"`
+	ScratchBlocks    []string `json:"scratch_blocks"`
+	Solutions        [][]int  `json:"solutions"`
+	SolutionPoints   []float64 `json:"solution_points"`
 }
 
 type TestcaseRequest struct {

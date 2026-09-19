@@ -3,6 +3,17 @@ SELECT id,question_id,solution,points
 FROM visual_solutions
 WHERE question_id = $1;
 
+-- name: CreateVisualSolution :one
+INSERT INTO visual_solutions (id, question_id, solution, points)
+VALUES ($1, $2, $3, $4)
+RETURNING id, question_id, solution, points;
+
+-- name: DeleteVisualSolution :exec
+DELETE FROM visual_solutions WHERE id = $1;
+
+-- name: DeleteVisualSolutionsByQuestionID :exec
+DELETE FROM visual_solutions WHERE question_id = $1;
+
 -- name: UpdateUserScore :exec
 UPDATE users
 SET score = $2
