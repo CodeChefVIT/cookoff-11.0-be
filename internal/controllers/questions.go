@@ -293,10 +293,35 @@ func (qc *QuestionController) Update(c echo.Context) error {
 	if e != nil {
 		return questionError(c, http.StatusInternalServerError, "Failed to delete visual blocks", e)
 	}
+	var blockIDs []uuid.UUID
 	for _, block := range r.ScratchBlocks {
-		_, err := qc.queries.CreateVisualBlock(c.Request().Context(), sqlc.CreateVisualBlockParams{ID: uuid.New(), QuestionID: id, Content: block})
+		b, err := qc.queries.CreateVisualBlock(c.Request().Context(), sqlc.CreateVisualBlockParams{ID: uuid.New(), QuestionID: id, Content: block})
 		if err != nil {
 			return questionError(c, http.StatusInternalServerError, "Failed to create visual block", err)
+		}
+		blockIDs = append(blockIDs, b.ID)
+	}
+	e = qc.queries.DeleteVisualSolutionsByQuestionID(c.Request().Context(), sqlc.DeleteVisualSolutionsByQuestionIDParams{QuestionID: id})
+	if e != nil {
+		return questionError(c, http.StatusInternalServerError, "Failed to delete visual solutions", e)
+	}
+	for i, solution := range r.Solutions {
+		if i >= len(r.SolutionPoints) {
+			continue
+		}
+		var solutionBlockIDs []uuid.UUID
+		for _, idx := range solution {
+			if idx >= 0 && idx < len(blockIDs) {
+				solutionBlockIDs = append(solutionBlockIDs, blockIDs[idx])
+			}
+		}
+		pts, err := utils.Float64ToNumeric(r.SolutionPoints[i])
+		if err != nil {
+			return questionError(c, http.StatusInternalServerError, "Invalid solution points", err)
+		}
+		_, err = qc.queries.CreateVisualSolution(c.Request().Context(), sqlc.CreateVisualSolutionParams{ID: uuid.New(), QuestionID: id, Solution: solutionBlockIDs, Points: pts})
+		if err != nil {
+			return questionError(c, http.StatusInternalServerError, "Failed to create visual solution", err)
 		}
 	}
 	utils.InvalidateContentCache(c.Request().Context())
