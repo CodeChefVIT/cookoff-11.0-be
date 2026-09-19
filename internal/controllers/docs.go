@@ -19,7 +19,12 @@ const scalarHTMLTemplate = `<!DOCTYPE html>
 <body>
     <script
         id="api-reference"
-        data-url="/docs/docs.yaml">
+        type="application/json">
+        {
+            "spec": {
+                "url": "/docs/docs.yaml"
+            }
+        }
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.25.30"></script>
 </body>
