@@ -44,6 +44,7 @@ func (ac *AuthController) StartGoogle(c echo.Context) error {
 		"response_type": {"code"},
 		"scope":         {"openid email profile"},
 		"state":         {state},
+		"hd":            {utils.Config.AllowedEmailDomain},
 	}
 	return c.Redirect(http.StatusFound, utils.Config.GoogleAuthURL+"?"+values.Encode())
 }
@@ -59,6 +60,12 @@ func (ac *AuthController) GoogleCallback(c echo.Context) error {
 	if err != nil {
 		logging.Errorf("Google authentication failed: %v", err)
 		return loginFailed(c, "oauth_failed")
+	}
+	if utils.Config.AllowedEmailDomain != "" {
+		if !strings.HasSuffix(identity.Email, "@"+utils.Config.AllowedEmailDomain) {
+			logging.Infof("OAuth domain rejection for email: %s", identity.Email)
+			return loginFailed(c, "not_vit_student")
+		}
 	}
 	user, err := ac.findUser(c.Request().Context(), identity)
 	if err != nil {
