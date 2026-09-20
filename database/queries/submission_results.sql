@@ -8,8 +8,10 @@ ON CONFLICT (id) DO NOTHING
 RETURNING *;
 
 -- name: GetSubmissionResults :many
-SELECT * FROM submission_results
-WHERE submission_id = $1;
+SELECT submission_results.*, COALESCE(testcases.hidden, true) AS hidden
+FROM submission_results
+LEFT JOIN testcases ON testcases.id = submission_results.testcase_id
+WHERE submission_results.submission_id = $1;
 
 -- name: UpdateSubmissionStatus :exec
 UPDATE submissions

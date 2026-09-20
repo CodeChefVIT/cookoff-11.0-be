@@ -62,19 +62,34 @@ func (q *Queries) CreateSubmissionResult(ctx context.Context, arg CreateSubmissi
 }
 
 const getSubmissionResults = `-- name: GetSubmissionResults :many
-SELECT id, testcase_id, submission_id, runtime, memory, points_awarded, status, description, stdout FROM submission_results
-WHERE submission_id = $1
+SELECT submission_results.id, submission_results.testcase_id, submission_results.submission_id, submission_results.runtime, submission_results.memory, submission_results.points_awarded, submission_results.status, submission_results.description, submission_results.stdout, COALESCE(testcases.hidden, true) AS hidden
+FROM submission_results
+LEFT JOIN testcases ON testcases.id = submission_results.testcase_id
+WHERE submission_results.submission_id = $1
 `
 
-func (q *Queries) GetSubmissionResults(ctx context.Context, submissionID uuid.UUID) ([]SubmissionResult, error) {
+type GetSubmissionResultsRow struct {
+	ID            uuid.UUID
+	TestcaseID    pgtype.UUID
+	SubmissionID  uuid.UUID
+	Runtime       pgtype.Numeric
+	Memory        pgtype.Numeric
+	PointsAwarded int32
+	Status        string
+	Description   *string
+	Stdout        *string
+	Hidden        bool
+}
+
+func (q *Queries) GetSubmissionResults(ctx context.Context, submissionID uuid.UUID) ([]GetSubmissionResultsRow, error) {
 	rows, err := q.db.Query(ctx, getSubmissionResults, submissionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SubmissionResult
+	var items []GetSubmissionResultsRow
 	for rows.Next() {
-		var i SubmissionResult
+		var i GetSubmissionResultsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TestcaseID,
@@ -85,6 +100,7 @@ func (q *Queries) GetSubmissionResults(ctx context.Context, submissionID uuid.UU
 			&i.Status,
 			&i.Description,
 			&i.Stdout,
+			&i.Hidden,
 		); err != nil {
 			return nil, err
 		}

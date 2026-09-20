@@ -281,7 +281,9 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 			Memory:      mem,
 			Status:      r.Status,
 			Description: desc,
-			Output:      valueOrEmpty(r.Stdout),
+		}
+		if !r.Hidden {
+			testcaseResults[i].Output = r.Stdout
 		}
 	}
 	response := dto.ResultResponse{
@@ -427,13 +429,6 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	logging.Infof("submission %s finalized: user=%s question=%s reward=%.2f partial_score=%.2f",
 		submissionID, submission.UserID, submission.QuestionID, reward, partialScore)
 	return response, nil
-}
-
-func valueOrEmpty(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
 }
 
 // decodeBase64Field decodes a base64 Judge0 field in place, leaving it as is

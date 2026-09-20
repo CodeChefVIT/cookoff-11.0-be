@@ -49,7 +49,7 @@ type Querier interface {
 	GetRoundOneVisualQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	GetSubmissionByID(ctx context.Context, id uuid.UUID) (Submission, error)
 	GetSubmissionForUpdate(ctx context.Context, id uuid.UUID) (Submission, error)
-	GetSubmissionResults(ctx context.Context, submissionID uuid.UUID) ([]SubmissionResult, error)
+	GetSubmissionResults(ctx context.Context, submissionID uuid.UUID) ([]GetSubmissionResultsRow, error)
 	GetSubmissionsAnalytics(ctx context.Context) (GetSubmissionsAnalyticsRow, error)
 	GetTestCaseByID(ctx context.Context, id uuid.UUID) (Testcase, error)
 	GetTotalUsersCount(ctx context.Context) (int32, error)
