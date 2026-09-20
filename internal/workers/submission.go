@@ -99,6 +99,7 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 	if payload.Message != nil && *payload.Message != "" {
 		description = description + ": " + *payload.Message
 	}
+	stdout := payload.StdOut
 
 	// Generate deterministic ID for result to ensure idempotency on retries
 	resultID := uuid.NewSHA1(uuid.NameSpaceURL, []byte(payload.Token))
@@ -119,6 +120,7 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 		PointsAwarded: pointsAwarded,
 		Status:        status,
 		Description:   &description,
+		Stdout:        stdout,
 	}); createErr != nil && !errors.Is(createErr, pgx.ErrNoRows) {
 		_ = tx.Rollback(ctx)
 		return fmt.Errorf("create submission result: %w", createErr)
@@ -277,6 +279,7 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 			Memory:      mem,
 			Status:      r.Status,
 			Description: desc,
+			Output:      valueOrEmpty(r.Stdout),
 		}
 	}
 	response := dto.ResultResponse{
@@ -422,6 +425,13 @@ func finalizeSubmission(ctx context.Context, qtx *sqlc.Queries, submissionID uui
 	logging.Infof("submission %s finalized: user=%s question=%s reward=%.2f partial_score=%.2f",
 		submissionID, submission.UserID, submission.QuestionID, reward, partialScore)
 	return response, nil
+}
+
+func valueOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 // errAlreadyFinalized means the submission already has its verdict.

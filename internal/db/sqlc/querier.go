@@ -19,10 +19,16 @@ type Querier interface {
 	CreateSubmissionResult(ctx context.Context, arg CreateSubmissionResultParams) (SubmissionResult, error)
 	CreateTestCase(ctx context.Context, arg CreateTestCaseParams) (Testcase, error)
 	CreateUserFromGoogle(ctx context.Context, arg CreateUserFromGoogleParams) (User, error)
+	CreateVisualBlock(ctx context.Context, arg CreateVisualBlockParams) (VisualBlock, error)
+	CreateVisualSolution(ctx context.Context, arg CreateVisualSolutionParams) (VisualSolution, error)
 	CreateVisualSubmission(ctx context.Context, arg CreateVisualSubmissionParams) (Submission, error)
 	DeleteQuestion(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	DeleteSubmission(ctx context.Context, id uuid.UUID) error
 	DeleteTestCase(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	DeleteVisualBlock(ctx context.Context, id uuid.UUID) error
+	DeleteVisualBlocksByQuestionID(ctx context.Context, questionID uuid.UUID) error
+	DeleteVisualSolution(ctx context.Context, id uuid.UUID) error
+	DeleteVisualSolutionsByQuestionID(ctx context.Context, questionID uuid.UUID) error
 	EnsureAttempt(ctx context.Context, arg EnsureAttemptParams) error
 	GetActiveUsersCount(ctx context.Context) (int32, error)
 	GetAllTestCasesByQuestion(ctx context.Context, questionID uuid.UUID) ([]Testcase, error)
@@ -58,13 +64,7 @@ type Querier interface {
 	ListAllQuestions(ctx context.Context) ([]ListAllQuestionsRow, error)
 	ListQuestionsByRound(ctx context.Context, round int32) ([]ListQuestionsByRoundRow, error)
 	ListVisualBlocksByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualBlock, error)
-	CreateVisualBlock(ctx context.Context, arg CreateVisualBlockParams) (VisualBlock, error)
-	DeleteVisualBlock(ctx context.Context, arg DeleteVisualBlockParams) error
-	DeleteVisualBlocksByQuestionID(ctx context.Context, arg DeleteVisualBlocksByQuestionIDParams) error
 	ListVisualSolutionsByQuestionID(ctx context.Context, questionID uuid.UUID) ([]VisualSolution, error)
-	CreateVisualSolution(ctx context.Context, arg CreateVisualSolutionParams) (VisualSolution, error)
-	DeleteVisualSolution(ctx context.Context, arg DeleteVisualSolutionParams) error
-	DeleteVisualSolutionsByQuestionID(ctx context.Context, arg DeleteVisualSolutionsByQuestionIDParams) error
 	SetQuestionBountyActive(ctx context.Context, arg SetQuestionBountyActiveParams) (Question, error)
 	UnbanUser(ctx context.Context, id uuid.UUID) (User, error)
 	UpdateAttemptStatus(ctx context.Context, arg UpdateAttemptStatusParams) error

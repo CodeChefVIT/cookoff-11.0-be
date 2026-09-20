@@ -14,12 +14,12 @@ import (
 
 const createSubmissionResult = `-- name: CreateSubmissionResult :one
 INSERT INTO submission_results (
-    id, testcase_id, submission_id, runtime, memory, points_awarded, status, description
+    id, testcase_id, submission_id, runtime, memory, points_awarded, status, description, stdout
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8
+    $1, $2, $3, $4, $5, $6, $7, $8, $9
 )
 ON CONFLICT (id) DO NOTHING
-RETURNING id, testcase_id, submission_id, runtime, memory, points_awarded, status, description
+RETURNING id, testcase_id, submission_id, runtime, memory, points_awarded, status, description, stdout
 `
 
 type CreateSubmissionResultParams struct {
@@ -31,6 +31,7 @@ type CreateSubmissionResultParams struct {
 	PointsAwarded int32
 	Status        string
 	Description   *string
+	Stdout        *string
 }
 
 func (q *Queries) CreateSubmissionResult(ctx context.Context, arg CreateSubmissionResultParams) (SubmissionResult, error) {
@@ -43,6 +44,7 @@ func (q *Queries) CreateSubmissionResult(ctx context.Context, arg CreateSubmissi
 		arg.PointsAwarded,
 		arg.Status,
 		arg.Description,
+		arg.Stdout,
 	)
 	var i SubmissionResult
 	err := row.Scan(
@@ -54,12 +56,13 @@ func (q *Queries) CreateSubmissionResult(ctx context.Context, arg CreateSubmissi
 		&i.PointsAwarded,
 		&i.Status,
 		&i.Description,
+		&i.Stdout,
 	)
 	return i, err
 }
 
 const getSubmissionResults = `-- name: GetSubmissionResults :many
-SELECT id, testcase_id, submission_id, runtime, memory, points_awarded, status, description FROM submission_results
+SELECT id, testcase_id, submission_id, runtime, memory, points_awarded, status, description, stdout FROM submission_results
 WHERE submission_id = $1
 `
 
@@ -81,6 +84,7 @@ func (q *Queries) GetSubmissionResults(ctx context.Context, submissionID uuid.UU
 			&i.PointsAwarded,
 			&i.Status,
 			&i.Description,
+			&i.Stdout,
 		); err != nil {
 			return nil, err
 		}

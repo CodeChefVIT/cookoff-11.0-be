@@ -1,8 +1,8 @@
 -- name: CreateSubmissionResult :one
 INSERT INTO submission_results (
-    id, testcase_id, submission_id, runtime, memory, points_awarded, status, description
+    id, testcase_id, submission_id, runtime, memory, points_awarded, status, description, stdout
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8
+    $1, $2, $3, $4, $5, $6, $7, $8, $9
 )
 ON CONFLICT (id) DO NOTHING
 RETURNING *;

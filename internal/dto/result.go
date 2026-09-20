@@ -6,6 +6,7 @@ type TestcaseResult struct {
 	Memory      float64 `json:"memory"`
 	Status      string  `json:"status"`
 	Description string  `json:"description"`
+	Output      string  `json:"output"`
 }
 
 type ResultResponse struct {

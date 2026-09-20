@@ -12,6 +12,36 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createVisualSolution = `-- name: CreateVisualSolution :one
+INSERT INTO visual_solutions (id, question_id, solution, points)
+VALUES ($1, $2, $3, $4)
+RETURNING id, question_id, solution, points
+`
+
+type CreateVisualSolutionParams struct {
+	ID         uuid.UUID
+	QuestionID uuid.UUID
+	Solution   []uuid.UUID
+	Points     pgtype.Numeric
+}
+
+func (q *Queries) CreateVisualSolution(ctx context.Context, arg CreateVisualSolutionParams) (VisualSolution, error) {
+	row := q.db.QueryRow(ctx, createVisualSolution,
+		arg.ID,
+		arg.QuestionID,
+		arg.Solution,
+		arg.Points,
+	)
+	var i VisualSolution
+	err := row.Scan(
+		&i.ID,
+		&i.QuestionID,
+		&i.Solution,
+		&i.Points,
+	)
+	return i, err
+}
+
 const createVisualSubmission = `-- name: CreateVisualSubmission :one
 INSERT INTO submissions(
     id,
@@ -66,6 +96,24 @@ func (q *Queries) CreateVisualSubmission(ctx context.Context, arg CreateVisualSu
 		&i.Status,
 	)
 	return i, err
+}
+
+const deleteVisualSolution = `-- name: DeleteVisualSolution :exec
+DELETE FROM visual_solutions WHERE id = $1
+`
+
+func (q *Queries) DeleteVisualSolution(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteVisualSolution, id)
+	return err
+}
+
+const deleteVisualSolutionsByQuestionID = `-- name: DeleteVisualSolutionsByQuestionID :exec
+DELETE FROM visual_solutions WHERE question_id = $1
+`
+
+func (q *Queries) DeleteVisualSolutionsByQuestionID(ctx context.Context, questionID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteVisualSolutionsByQuestionID, questionID)
+	return err
 }
 
 const getQuestionReward = `-- name: GetQuestionReward :one
@@ -124,52 +172,6 @@ func (q *Queries) ListVisualSolutionsByQuestionID(ctx context.Context, questionI
 		return nil, err
 	}
 	return items, nil
-}
-
-const createVisualSolution = `-- name: CreateVisualSolution :one
-INSERT INTO visual_solutions (id, question_id, solution, points)
-VALUES ($1, $2, $3, $4)
-RETURNING id, question_id, solution, points
-`
-
-type CreateVisualSolutionParams struct {
-	ID         uuid.UUID
-	QuestionID uuid.UUID
-	Solution   []uuid.UUID
-	Points     pgtype.Numeric
-}
-
-func (q *Queries) CreateVisualSolution(ctx context.Context, arg CreateVisualSolutionParams) (VisualSolution, error) {
-	row := q.db.QueryRow(ctx, createVisualSolution, arg.ID, arg.QuestionID, arg.Solution, arg.Points)
-	var i VisualSolution
-	err := row.Scan(&i.ID, &i.QuestionID, &i.Solution, &i.Points)
-	return i, err
-}
-
-const deleteVisualSolution = `-- name: DeleteVisualSolution :exec
-DELETE FROM visual_solutions WHERE id = $1
-`
-
-type DeleteVisualSolutionParams struct {
-	ID uuid.UUID
-}
-
-func (q *Queries) DeleteVisualSolution(ctx context.Context, arg DeleteVisualSolutionParams) error {
-	_, err := q.db.Exec(ctx, deleteVisualSolution, arg.ID)
-	return err
-}
-
-const deleteVisualSolutionsByQuestionID = `-- name: DeleteVisualSolutionsByQuestionID :exec
-DELETE FROM visual_solutions WHERE question_id = $1
-`
-
-type DeleteVisualSolutionsByQuestionIDParams struct {
-	QuestionID uuid.UUID
-}
-
-func (q *Queries) DeleteVisualSolutionsByQuestionID(ctx context.Context, arg DeleteVisualSolutionsByQuestionIDParams) error {
-	_, err := q.db.Exec(ctx, deleteVisualSolutionsByQuestionID, arg.QuestionID)
-	return err
 }
 
 const updateAttemptStatus = `-- name: UpdateAttemptStatus :exec
