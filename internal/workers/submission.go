@@ -6,6 +6,7 @@ package workers
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -99,6 +100,7 @@ func HandleJudge0CallbackTask(ctx context.Context, t *asynq.Task) error {
 	if payload.Message != nil && *payload.Message != "" {
 		description = description + ": " + *payload.Message
 	}
+	decodeBase64Field(payload.StdOut)
 	stdout := payload.StdOut
 
 	// Generate deterministic ID for result to ensure idempotency on retries
@@ -432,6 +434,17 @@ func valueOrEmpty(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+// decodeBase64Field decodes a base64 Judge0 field in place, leaving it as is
+// when it is not valid base64.
+func decodeBase64Field(field *string) {
+	if field == nil {
+		return
+	}
+	if decoded, err := base64.StdEncoding.DecodeString(*field); err == nil {
+		*field = string(decoded)
+	}
 }
 
 // errAlreadyFinalized means the submission already has its verdict.
