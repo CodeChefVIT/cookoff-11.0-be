@@ -144,18 +144,15 @@ func getSubmissionResult(ctx context.Context, submission sqlc.Submission) (dto.R
 			resultDesc = *result.Description
 		}
 
-		stdout := ""
-		if result.Stdout != nil {
-			stdout = *result.Stdout
-		}
-
 		testcases[i] = dto.TestcaseResult{
 			ID:          resultID,
 			Runtime:     runtime.Float64,
 			Memory:      memory.Float64,
 			Status:      result.Status,
 			Description: resultDesc,
-			Output:      stdout,
+		}
+		if !result.Hidden {
+			testcases[i].Output = result.Stdout
 		}
 	}
 
