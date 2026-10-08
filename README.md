@@ -1,6 +1,26 @@
-# Cookoff 11.0 Backend
+<div align="center">
+  <a href="https://www.codechefvit.com" target="_blank">
+    <img src="https://i.ibb.co/4J9LXxS/cclogo.png" width="160" title="CodeChef-VIT" alt="CodeChef-VIT">
+  </a>
 
-A production-level, highly scalable Go backend built using the **Echo v4** HTTP framework. It utilizes connection pooled **PostgreSQL** via `pgx/v5` and compiled type-safe database queries via **SQLC**, backed by **Redis** and structured logging via **Zap**.
+  <h1>CookOff 11.0 Backend</h1>
+
+  <p>
+    A production-level, highly scalable Go backend built using the <b>Echo v4</b> HTTP framework. It utilizes connection pooled <b>PostgreSQL</b> via <code>pgx/v5</code> and compiled type-safe database queries via <b>SQLC</b>, backed by <b>Redis</b> and structured logging via <b>Zap</b>.
+  </p>
+
+  <p>
+    <a href="https://github.com/CodeChefVIT/cookoff-11.0-be">
+      <img src="https://img.shields.io/badge/STATUS-LIVE-green?style=for-the-badge" alt="Live">
+    </a>
+    <a href="https://github.com/CodeChefVIT/cookoff-11.0-be/pulls">
+      <img src="https://img.shields.io/badge/PRs-WELCOME-blue?style=for-the-badge" alt="PRs Welcome">
+    </a>
+  </p>
+</div>
+
+---
+
 
 ## Tech Stack
 
@@ -148,3 +168,140 @@ Every Pull Request and commit pushed to `main`/`master`/`dev` triggers a GitHub 
 - Code styling & security linters (`golangci-lint`).
 - Automated tests suite completion (`go test`).
 - Go application compilation health (`go build`).
+
+---
+
+## 🔗 Related Projects
+
+- **Participant Portal:** [`cookoff-portal-11.0`](https://github.com/CodeChefVIT/cookoff-portal-11.0)
+- **Admin Portal:** [`cookoff-admin-11.0`](https://github.com/CodeChefVIT/cookoff-admin-11.0)
+
+These services work together to provide the complete Cookoff 11.0 contest infrastructure.
+
+---
+
+## 🚀 Contributors
+
+<table align="center">
+<tr align="center">
+
+<td>
+<p align="center">
+<img src="https://avatars.githubusercontent.com/YOGESH-08" width="150" height="150" alt="YOGESH-08">
+</p>
+<p align="center">
+<a href="https://github.com/YOGESH-08" target="_blank">Yogesh Kumar</a>
+</p>
+</td>
+
+<td>
+<p align="center">
+<img src="https://avatars.githubusercontent.com/mharshil1234" width="150" height="150" alt="Harshil Maheshwari">
+</p>
+<p align="center">
+<a href="https://github.com/mharshil1234" target="_blank">Harshil Maheshwari</a>
+</p>
+</td>
+
+<td>
+<p align="center">
+<img src="https://avatars.githubusercontent.com/lakshraja" width="150" height="150" alt="lakshraja">
+</p>
+<p align="center">
+<a href="https://github.com/lakshraja" target="_blank">Laksh Raja</a>
+</p>
+</td>
+
+<td>
+<p align="center">
+<img src="https://avatars.githubusercontent.com/namitg105" width="150" height="150" alt="namitg105">
+</p>
+<p align="center">
+<a href="https://github.com/namitg105" target="_blank">Namit Gupta</a>
+</p>
+</td>
+
+</tr>
+
+<tr align="center">
+
+<td>
+<p align="center">
+<img src="https://avatars.githubusercontent.com/Xen-org" width="150" height="150" alt="Xen-org">
+</p>
+<p align="center">
+<a href="https://github.com/Xen-org" target="_blank">Tejas Maurya</a>
+</p>
+</td>
+
+<td>
+<p align="center">
+<img src="https://avatars.githubusercontent.com/atharvaSharma17" width="150" height="150" alt="atharvaSharma17">
+</p>
+<p align="center">
+<a href="https://github.com/atharvaSharma17" target="_blank">Atharva Sharma</a>
+</p>
+</td>
+
+<td>
+<p align="center">
+<img src="https://avatars.githubusercontent.com/VPK570" width="150" height="150" alt="VPK570">
+</p>
+<p align="center">
+<a href="https://github.com/VPK570" target="_blank">VP Krishna</a>
+</p>
+</td>
+
+<td>
+<p align="center">
+<img src="https://avatars.githubusercontent.com/Radical11" width="150" height="150" alt="Radical11">
+</p>
+<p align="center">
+<a href="https://github.com/Radical11" target="_blank">Vihaan Jain</a>
+</p>
+</td>
+
+</tr>
+
+<tr align="center">
+
+<td>
+<p align="center">
+<img src="https://avatars.githubusercontent.com/upayanmazumder" width="150" height="150" alt="Upayan Mazumder">
+</p>
+<p align="center">
+<a href="https://github.com/upayanmazumder" target="_blank">Upayan Mazumder</a>
+</p>
+</td>
+
+<td>
+<p align="center">
+<img src="https://avatars.githubusercontent.com/NeharikaChinnappa" width="150" height="150" alt="NeharikaChinnappa">
+</p>
+<p align="center">
+<a href="https://github.com/NeharikaChinnappa" target="_blank">Neharika Chinnappa</a>
+</p>
+</td>
+
+<td>
+<p align="center">
+<img src="https://avatars.githubusercontent.com/Rithish-2914" width="150" height="150" alt="Rithish-2914">
+</p>
+<p align="center">
+<a href="https://github.com/Rithish-2914" target="_blank">Rithish</a>
+</p>
+</td>
+
+</tr>
+</table>
+---
+
+## 📝 License
+
+Distributed under the MIT License. See `LICENSE` for more information.
+
+---
+
+<p align="center">
+  Made with ❤️ by <a href="https://www.codechefvit.com" target="_blank">CodeChef-VIT</a>
+</p>
